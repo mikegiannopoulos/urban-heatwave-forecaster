@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+*.ipynb_checkpoints
+
+# Virtual environment
+.venv/
+
+# VSCode
+.vscode/
+
+# Output files
+outputs/
+*.pdf
+*.png
