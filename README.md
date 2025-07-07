@@ -5,6 +5,12 @@ Built for researchers, city planners, or anyone who needs timely insight into ex
 
 ---
 
+## 📊 Live Demo
+
+[Urban Heatwave Forecaster – Streamlit App](https://urban-heatwave-forecaster.streamlit.app/)
+
+---
+
 ## 🌐 Scalability & Design Philosophy
 
 This project serves as a **foundational pipeline** for operational urban heatwave analysis. Its architecture is intentionally designed for scalability and reproducibility:
@@ -113,12 +119,6 @@ Then run the pipeline:
 ```bash
 python -m urban_heatwave_forecaster.cli fetch --city stockholm
 ```
-
----
-
-## 📊 Live Demo
-
-[Urban Heatwave Forecaster – Streamlit App](https://urban-heatwave-forecaster.streamlit.app/)
 
 ---
 
