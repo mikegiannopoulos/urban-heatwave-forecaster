@@ -118,7 +118,7 @@ python -m urban_heatwave_forecaster.cli fetch --city stockholm
 
 ## 📊 Live Demo
 
-🚧 *Coming soon — deployment to Streamlit Cloud in progress.*
+[Urban Heatwave Forecaster – Streamlit App](https://urban-heatwave-forecaster.streamlit.app/)
 
 ---
 
