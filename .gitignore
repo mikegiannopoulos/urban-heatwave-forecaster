@@ -1,15 +1,20 @@
-# Python
+# Python artifacts
 __pycache__/
-*.py[cod]
-*.ipynb_checkpoints
+*.pyc
 
-# Virtual environment
-.venv/
+# Jupyter
+.ipynb_checkpoints/
 
-# VSCode
-.vscode/
+# Streamlit & local cache
+cache/
+.cache/
+.cache.sqlite
 
-# Output files
+# Data (unless you want to track processed results)
+data/raw/
+data/processed/
+data/metadata/
 outputs/
-*.pdf
-*.png
+
+# Virtualenv
+.venv/

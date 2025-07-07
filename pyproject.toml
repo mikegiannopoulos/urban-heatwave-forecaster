@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "urban-heatwave-forecaster"
+version = "0.1.0"
+description = "Real-time detection and risk assessment of urban heatwaves"
+authors = [{name = "Michael Giannopoulos"}]
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+dependencies = [
+  "pandas>=2.2,<2.4",
+  "numpy >= 1.26, < 2.3",
+  "typer>=0.12",
+  "rich>=13",
+  "streamlit>=1.33",
+  "plotly >=5.20",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "black", "isort", "nbstripout"]
+
+[project.scripts]
+uhf = "urban_heatwave_forecaster.cli:app"
