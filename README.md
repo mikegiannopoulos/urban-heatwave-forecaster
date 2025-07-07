@@ -76,7 +76,7 @@ source .venv/bin/activate    # Windows: .venv\Scripts\activate
 pip install -e .
 ```
 
-### 4 Run a quick smoke test
+### 4 Run a quick test
 
 ```bash
 python -m urban_heatwave_forecaster.cli fetch --city Athens
