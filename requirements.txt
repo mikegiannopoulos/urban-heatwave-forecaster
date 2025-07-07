@@ -7,3 +7,6 @@ streamlit
 pyyaml
 plotly
 openmeteo-requests
+typer
+requests-cache
+retry-requests
