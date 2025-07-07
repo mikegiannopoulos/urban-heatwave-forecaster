@@ -1,12 +1,13 @@
 import streamlit as st
 import pandas as pd
-from pathlib import Path
 import plotly.express as px
 import sys
 from pathlib import Path
-from urban_heatwave_forecaster import data_fetcher, detect_heatwaves, risk_model
 
+# Fix: add src/ to path so Streamlit can find your module
 sys.path.append(str(Path(__file__).resolve().parent / "src"))
+
+from urban_heatwave_forecaster import data_fetcher, detect_heatwaves, risk_model
 
 st.set_page_config(page_title="Urban Heatwave Forecaster", layout="wide")
 
