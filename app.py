@@ -3,6 +3,10 @@ import pandas as pd
 from pathlib import Path
 import plotly.express as px
 from urban_heatwave_forecaster import data_fetcher, detect_heatwaves, risk_model
+import sys
+from pathlib import Path
+
+sys.path.append(str(Path(__file__).resolve().parent / "src"))
 
 st.set_page_config(page_title="Urban Heatwave Forecaster", layout="wide")
 
