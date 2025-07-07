@@ -6,3 +6,4 @@ scikit-learn
 streamlit
 pyyaml
 plotly
+openmeteo-requests
