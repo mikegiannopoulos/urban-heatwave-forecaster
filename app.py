@@ -2,9 +2,9 @@ import streamlit as st
 import pandas as pd
 from pathlib import Path
 import plotly.express as px
-from urban_heatwave_forecaster import data_fetcher, detect_heatwaves, risk_model
 import sys
 from pathlib import Path
+from urban_heatwave_forecaster import data_fetcher, detect_heatwaves, risk_model
 
 sys.path.append(str(Path(__file__).resolve().parent / "src"))
 
