@@ -5,3 +5,4 @@ jupyter
 scikit-learn
 streamlit
 pyyaml
+plotly
