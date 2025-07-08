@@ -59,7 +59,7 @@ urban-heatwave-forecaster/
 ### 1 Clone the repo
 
 ```bash
-git clone https://github.com/your-username/urban-heatwave-forecaster.git
+git clone https://github.com/mikegiannopoulos/urban-heatwave-forecaster.git
 cd urban-heatwave-forecaster
 ```
 
