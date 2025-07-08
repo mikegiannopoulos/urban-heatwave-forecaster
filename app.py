@@ -16,8 +16,8 @@ with st.expander("🔍 How This Works"):
     **Overview**  
     This tool forecasts potential heatwave risk by combining short-term temperature forecasts with long-term climate norms and urban vulnerability data.
 
-    **Heatwave Detection**
-    A heatwave happens when, for at least three days in a row, both the daytime highs and nighttime lows are hotter than what’s normal for that time of year—specifically, hotter than 95% of past temperatures recorded between 1991 and 2020.
+    **Heatwave Detection**  
+    According to the European State of the Climate (ESOTC), a heatwave happens when, for at least three days in a row, both the daytime highs and nighttime lows are hotter than what’s normal for that time of year—specifically, hotter than 95% of past temperatures recorded between 1991 and 2020.
     
     Simply put, day is marked as a heatwave day if:
     
