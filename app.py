@@ -29,7 +29,7 @@ with st.expander("🔍 How This Works"):
 
     - $T_{\\min}^{95p}, T_{\\max}^{95p}$ are the daily 95th percentile thresholds, based on 1991–2020 historical data.
     
-    **Risk Assessment Factors** 
+    **Risk Assessment Factors**     
     Each day is assessed for urban heat risk by considering:
     
     - Maximum temperature forecast
