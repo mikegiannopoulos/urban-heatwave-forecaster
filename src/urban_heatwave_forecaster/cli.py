@@ -12,6 +12,7 @@ def fetch(city: str):
         "Athens":     (37.9838, 23.7278),
         "Rome":       (41.8919, 12.5113),
         "Stockholm":  (59.3294, 18.0687),
+        "London":     (51.5085, -0.1257)
     }
 
     if city not in coords:
