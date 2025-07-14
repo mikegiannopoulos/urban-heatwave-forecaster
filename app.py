@@ -47,7 +47,7 @@ with st.expander("🔍 How This Works"):
 
 
 # --- Sidebar: City selection ---
-city = st.sidebar.selectbox("Select a city", ["Athens", "Rome", "Stockholm"])
+city = st.sidebar.selectbox("Select a city", ["Athens", "Rome", "Stockholm", "London"])
 city_lower = city.lower()
 
 # --- Run forecast step ---
