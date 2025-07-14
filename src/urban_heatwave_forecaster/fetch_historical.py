@@ -51,6 +51,7 @@ if __name__ == "__main__":
         {"name": "Athens", "lat": 37.9838, "lon": 23.7278},
         {"name": "Rome",   "lat": 41.8919, "lon": 12.5113},
         {"name": "Stockholm",   "lat": 59.3294, "lon": 18.0687},
+        {"name": "London", "lat": 51.5085, "lon": -0.1257},
 
     ]
     for c in cities:
