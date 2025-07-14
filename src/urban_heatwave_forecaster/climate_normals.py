@@ -35,5 +35,5 @@ def build_percentile_climatology(city_name, input_path=None, output_path=None):
     return climatology
 
 if __name__ == "__main__":
-    for city in ["Athens", "Rome", "Stockholm"]:
+    for city in ["Athens", "Rome", "Stockholm", "London"]:
         build_percentile_climatology(city)
