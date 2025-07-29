@@ -11,6 +11,33 @@ from urban_heatwave_forecaster import data_fetcher, detect_heatwaves, risk_model
 
 st.set_page_config(page_title="Urban Heatwave Forecaster", layout="wide")
 
+st.markdown("""
+<style>
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.gears {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 20px 0;
+}
+
+.gear {
+  width: 40px;
+  height: 40px;
+  border: 6px solid #ff4b4b;  /* matches button color */
+  border-radius: 50%;
+  border-top-color: transparent;
+  margin: 0 10px;
+  animation: spin 1s linear infinite;
+}
+</style>
+""", unsafe_allow_html=True)
+
+
 with st.expander("🔍 How This Works"):
     st.markdown("""
     **Overview**  
@@ -60,6 +87,13 @@ lat, lon = latlon[city]
 st.title(f"Heatwave Risk Assessment – {city}")
 
 if st.button("🔄 Generate Heatwave Forecast", type="primary"):
+    
+    st.markdown("""
+    <div class="gears">
+      <div class="gear"></div>
+      <div class="gear"></div>
+    </div>
+    """, unsafe_allow_html=True)
 
     # 1. Fetch forecast
     with st.spinner("Fetching forecast..."):
