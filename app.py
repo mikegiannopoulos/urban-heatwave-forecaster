@@ -63,6 +63,32 @@ with st.expander("🔍 How This Works"):
     - Population and green area data: [Urban dataset](https://hugsi.green/cities/index)
     """, unsafe_allow_html=True)
 
+with st.expander("📦 How the Data Flows"):
+        st.markdown("""
+### 🧬 Step-by-Step Processing
+
+1. **🛰️ Forecast Data (ECMWF)**  
+   Retrieves the next 7 days of hourly temperature from Open-Meteo API.
+
+2. **📊 Daily Aggregation**  
+   Calculates daily Tmin/Tmax values from hourly data.
+
+3. **📚 Climatology Baseline (1991–2020)**  
+   Loads historical temperature data to compute 95th percentiles per day-of-year.
+
+4. **🔥 Heatwave Detection**  
+   Flags any run of **≥3 days** where both Tmin and Tmax exceed climatology thresholds.
+
+5. **🏙️ Urban Vulnerability Data**  
+   Merges in city-level data: elderly %, density, green space.
+
+6. **🧮 Risk Scoring**  
+   Assigns a heatwave risk level for each day using temperature + vulnerability.
+
+7. **📈 Final Output**  
+   Risk table + interactive chart reflect all the above in real time.
+        """)
+
 # --- Sidebar: City selection ---
 city = st.sidebar.selectbox("Select a city", ["Athens", "Rome", "Stockholm", "London"])
 city_lower = city.lower()
@@ -119,31 +145,7 @@ if st.button("Generate Heatwave Forecast", type="primary"):
         vulnerability_df.loc[vulnerability_df["city"] == city_lower, "elderly_percent"].iloc[0]
     )
 
-    with st.expander("📦 How the Data Flows"):
-        st.markdown("""
-### 🧬 Step-by-Step Processing
-
-1. **🛰️ Forecast Data (ECMWF)**  
-   Retrieves the next 7 days of hourly temperature from Open-Meteo API.
-
-2. **📊 Daily Aggregation**  
-   Calculates daily Tmin/Tmax values from hourly data.
-
-3. **📚 Climatology Baseline (1991–2020)**  
-   Loads historical temperature data to compute 95th percentiles per day-of-year.
-
-4. **🔥 Heatwave Detection**  
-   Flags any run of **≥3 days** where both Tmin and Tmax exceed climatology thresholds.
-
-5. **🏙️ Urban Vulnerability Data**  
-   Merges in city-level data: elderly %, density, green space.
-
-6. **🧮 Risk Scoring**  
-   Assigns a heatwave risk level for each day using temperature + vulnerability.
-
-7. **📈 Final Output**  
-   Risk table + interactive chart reflect all the above in real time.
-        """)
+    
 
     # --- Plotly Chart ---
     import plotly.graph_objects as go
