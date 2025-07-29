@@ -84,9 +84,15 @@ import time
 if st.button("🔄 Generate Heatwave Forecast", type="primary"):
     
     st.markdown('<div class="gear"></div>', unsafe_allow_html=True)
+    
+    # Create a placeholder for the gear
+    gear_placeholder = st.empty()
 
     # Pause 2 seconds before starting computation
     time.sleep(2)
+
+    # Clear the gear before showing results
+    gear_placeholder.empty()
 
     # 1. Fetch forecast
     with st.spinner("Fetching forecast..."):
