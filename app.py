@@ -26,8 +26,8 @@ st.markdown("""
 }
 
 .gear {
-  width: 40px;
-  height: 40px;
+  width: 100px;
+  height: 100px;
   border: 6px solid #ff4b4b;  /* matches button color */
   border-radius: 50%;
   border-top-color: transparent;
