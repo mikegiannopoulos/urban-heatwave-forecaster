@@ -89,7 +89,7 @@ if st.button("Generate Heatwave Forecast", type="primary"):
 
 
     # Pause 2 seconds before starting computation
-    time.sleep(2)
+    time.sleep(1)
 
     # Clear the gear before showing results
     gear_placeholder.empty()
