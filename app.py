@@ -79,14 +79,14 @@ lat, lon = latlon[city]
 # --- Button to Generate Forecast ---
 st.title(f"Heatwave Risk Assessment – {city}")
 
+import time
+
 if st.button("🔄 Generate Heatwave Forecast", type="primary"):
     
-    st.markdown("""
-    <div class="gears">
-      <div class="gear"></div>
-      <div class="gear"></div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown('<div class="gear"></div>', unsafe_allow_html=True)
+
+    # Pause 2 seconds before starting computation
+    time.sleep(2)
 
     # 1. Fetch forecast
     with st.spinner("Fetching forecast..."):
