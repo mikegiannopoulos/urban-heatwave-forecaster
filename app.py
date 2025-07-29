@@ -137,7 +137,7 @@ if st.button("Generate Heatwave Forecast", type="primary"):
     # 3. Risk assessment
     vulnerability_df = pd.read_csv("data/raw/urban_vulnerability.csv")
     risk_df = risk_model.assess_heatwave_risk(detected_df, vulnerability_df)
-
+    
     # --- Summary Metrics ---
     heatwave_days = detected_df["heatwave_id"].notna().sum()
     extreme_days = (risk_df["risk_level"] == "Extreme").sum()
@@ -145,7 +145,11 @@ if st.button("Generate Heatwave Forecast", type="primary"):
         vulnerability_df.loc[vulnerability_df["city"] == city_lower, "elderly_percent"].iloc[0]
     )
 
-    
+    # --- Heatwave Message ---
+    if detected_df["heatwave_id"].notna().any():
+        st.success(f"**Heatwave detected!** {heatwave_days} heatwave day(s) forecasted for {city}.")
+    else:
+        st.info(f"No heatwave forecasted for {city} in the next 7 days.")
 
     # --- Plotly Chart ---
     import plotly.graph_objects as go
