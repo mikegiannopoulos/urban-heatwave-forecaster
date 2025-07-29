@@ -197,12 +197,21 @@ if st.button("Generate Heatwave Forecast", type="primary"):
     # --- Color-coded Risk Table ---
     emoji_map = {"Extreme": "🔥🔥", "High": "🔥", "Moderate": "🌡️", "Mild": "☀️", "None": "❄️"}
     risk_display = risk_df.copy()
+
     # Format date as "Tue, Jul 29"
     risk_display["date"] = pd.to_datetime(risk_display["date"])
     risk_display["date"] = risk_display["date"].dt.strftime("%a, %b %d")
+
+    # Map emojis
     risk_display["⚠️"] = risk_display["risk_level"].map(emoji_map)
+
+    # Select and rename columns
     styled = risk_display[["date", "tmax", "risk_level", "⚠️"]]
     styled.columns = ["Date", "Tmax (°C)", "Risk Level", ""]
+
+    # Remove the index before displaying
+    styled = styled.reset_index(drop=True)
+
     st.subheader("📋 Heatwave Risk Table")
     st.dataframe(styled)
 
