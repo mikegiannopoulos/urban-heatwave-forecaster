@@ -27,8 +27,6 @@ with st.expander("🔍 How This Works"):
     
     for **at least 3 consecutive days** (run length ≥ 3).
 
-    - $T_{\\min}^{95p}, T_{\\max}^{95p}$ are the daily 95th percentile thresholds, based on 1991–2020 historical data.
-    
     **Risk Assessment Factors**     
     Each day is assessed for urban heat risk by considering:
     
@@ -45,12 +43,11 @@ with st.expander("🔍 How This Works"):
     - Population and green area data: [Urban dataset](https://hugsi.green/cities/index)
     """, unsafe_allow_html=True)
 
-
 # --- Sidebar: City selection ---
 city = st.sidebar.selectbox("Select a city", ["Athens", "Rome", "Stockholm", "London"])
 city_lower = city.lower()
 
-# --- Run forecast step ---
+# --- Coordinates ---
 latlon = {
     "Athens": (37.9838, 23.7278),
     "Rome": (41.8919, 12.5113),
@@ -58,47 +55,37 @@ latlon = {
     "London": (51.5085, -0.1257)
 }
 lat, lon = latlon[city]
-with st.spinner("Fetching forecast..."):
-    forecast_df = data_fetcher.fetch_ecmwf_forecast(lat, lon, city)
 
-# --- Run heatwave detection ---
-clim_path = Path(f"data/processed/{city_lower}_climatology_95p.csv")
-forecast_path = Path(f"data/raw/{city_lower}_forecast.csv")
-forecast_df.to_csv(forecast_path, index=False)
-detected_path = Path(f"data/processed/{city_lower}_forecast_with_heatwaves.csv")
-
-vuln_path = Path("data/raw/urban_vulnerability.csv")
-vulnerability_df = pd.read_csv(vuln_path)
-
-with st.spinner("🔍 Calculating climatology and heatwave risk..."):
-    # Heatwave detection
-    detected_df = detect_heatwaves.detect_heatwaves(forecast_path, clim_path)
-    detected_df.to_csv(detected_path, index=False)
-
-    # Add is_hot if needed
-    if "is_hot" not in detected_df.columns and "exceeds_95p" in detected_df.columns:
-        detected_df["is_hot"] = detected_df["exceeds_95p"]
-
-    # Risk model
-    risk_df = risk_model.assess_heatwave_risk(detected_df, vulnerability_df)
-
-
-# --- Run risk assessment ---
-vuln_path = Path("data/raw/urban_vulnerability.csv")
-vulnerability_df = pd.read_csv(vuln_path)
-if "is_hot" not in detected_df.columns and "exceeds_95p" in detected_df.columns:
-    detected_df["is_hot"] = detected_df["exceeds_95p"]
-with st.spinner("Assessing risk..."):
-    risk_df = risk_model.assess_heatwave_risk(detected_df, vulnerability_df)
-
-# --- Summary Metrics ---
-heatwave_days = detected_df["heatwave_id"].notna().sum()
-extreme_days = (risk_df["risk_level"] == "Extreme").sum()
-elderly_pct = int(vulnerability_df.loc[vulnerability_df["city"] == city_lower, "elderly_percent"].iloc[0])
-
+# --- Button to Generate Forecast ---
 st.title(f"Heatwave Risk Assessment – {city}")
-with st.expander("📦 How the Data Flows"):
-    st.markdown("""
+
+if st.button("🔄 Generate Heatwave Forecast", type="primary"):
+    # Fetch forecast
+    with st.spinner("Fetching forecast..."):
+        forecast_df = data_fetcher.fetch_ecmwf_forecast(lat, lon, city)
+
+    # Heatwave detection
+    clim_path = Path(f"data/processed/{city_lower}_climatology_95p.csv")
+    forecast_path = Path(f"data/raw/{city_lower}_forecast.csv")
+    forecast_df.to_csv(forecast_path, index=False)
+
+    with st.spinner("🔍 Calculating climatology and heatwave risk..."):
+        detected_df = detect_heatwaves.detect_heatwaves(forecast_path, clim_path)
+        detected_df.to_csv(Path(f"data/processed/{city_lower}_forecast_with_heatwaves.csv"), index=False)
+
+        if "is_hot" not in detected_df.columns and "exceeds_95p" in detected_df.columns:
+            detected_df["is_hot"] = detected_df["exceeds_95p"]
+
+        vulnerability_df = pd.read_csv("data/raw/urban_vulnerability.csv")
+        risk_df = risk_model.assess_heatwave_risk(detected_df, vulnerability_df)
+
+    # --- Summary Metrics ---
+    heatwave_days = detected_df["heatwave_id"].notna().sum()
+    extreme_days = (risk_df["risk_level"] == "Extreme").sum()
+    elderly_pct = int(vulnerability_df.loc[vulnerability_df["city"] == city_lower, "elderly_percent"].iloc[0])
+
+    with st.expander("📦 How the Data Flows"):
+        st.markdown("""
 ### 🧬 Step-by-Step Processing
 
 1. **🛰️ Forecast Data (ECMWF)**  
@@ -121,59 +108,57 @@ with st.expander("📦 How the Data Flows"):
 
 7. **📈 Final Output**  
    Risk table + interactive chart reflect all the above in real time.
-    """)
+        """)
 
-import plotly.graph_objects as go
-from datetime import timedelta
+    # --- Plotly Chart ---
+    import plotly.graph_objects as go
+    from datetime import timedelta
 
-# Step 1: Create base line trace (one line, all tmax values)
-fig_df = detected_df.copy()
-fig_df["Heatwave"] = fig_df["heatwave_id"].notna().map({True: "Yes", False: "No"})
+    fig_df = detected_df.copy()
+    fig_df["Heatwave"] = fig_df["heatwave_id"].notna().map({True: "Yes", False: "No"})
 
-fig = go.Figure()
-fig.add_trace(go.Scatter(
-    x=fig_df["date"],
-    y=fig_df["tmax"],
-    mode="lines+markers",
-    name="Tmax",
-    line=dict(color="blue", width=2),
-    marker=dict(size=6)
-))
-
-# Step 2: Add shaded heatwave periods as background rectangles
-heatwave_groups = fig_df[fig_df["heatwave_id"].notna()].groupby("heatwave_id")
-
-shapes = []
-for _, group in heatwave_groups:
-    start = group["date"].min()
-    end = group["date"].max() + timedelta(days=1)  # pad right edge
-    shapes.append(dict(
-        type="rect",
-        xref="x", yref="paper",
-        x0=start, x1=end,
-        y0=0, y1=1,
-        fillcolor="rgba(255,0,0,0.15)",  # light red
-        line_width=0,
-        layer="below"
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=fig_df["date"],
+        y=fig_df["tmax"],
+        mode="lines+markers",
+        name="Tmax",
+        line=dict(color="blue", width=2),
+        marker=dict(size=6)
     ))
 
-fig.update_layout(
-    title="Max Temperature Forecast",
-    xaxis_title="Date",
-    yaxis_title="Tmax (°C)",
-    shapes=shapes,
-    legend=dict(title=""),
-    margin=dict(l=40, r=20, t=60, b=40)
-)
+    # Add shaded heatwave periods
+    shapes = []
+    for _, group in fig_df[fig_df["heatwave_id"].notna()].groupby("heatwave_id"):
+        start = group["date"].min()
+        end = group["date"].max() + timedelta(days=1)
+        shapes.append(dict(
+            type="rect",
+            xref="x", yref="paper",
+            x0=start, x1=end,
+            y0=0, y1=1,
+            fillcolor="rgba(255,0,0,0.15)",
+            line_width=0,
+            layer="below"
+        ))
 
-st.plotly_chart(fig, use_container_width=True)
+    fig.update_layout(
+        title="Max Temperature Forecast",
+        xaxis_title="Date",
+        yaxis_title="Tmax (°C)",
+        shapes=shapes,
+        legend=dict(title=""),
+        margin=dict(l=40, r=20, t=60, b=40)
+    )
 
-# --- Color-coded Risk Table ---
-emoji_map = {"Extreme": "🔥🔥", "High": "🔥", "Moderate": "🌡️", "Mild": "☀️", "None": "❄️"}
-risk_display = risk_df.copy()
-risk_display["⚠️"] = risk_display["risk_level"].map(emoji_map)
-styled = risk_display[["date", "tmax", "risk_level", "⚠️", "high_vulnerability"]]
-styled.columns = ["Date", "Tmax (°C)", "Risk Level", "", "High Vulnerability?"]
-st.subheader("📋 Heatwave Risk Table")
-st.dataframe(styled)
+    st.plotly_chart(fig, use_container_width=True)
+
+    # --- Color-coded Risk Table ---
+    emoji_map = {"Extreme": "🔥🔥", "High": "🔥", "Moderate": "🌡️", "Mild": "☀️", "None": "❄️"}
+    risk_display = risk_df.copy()
+    risk_display["⚠️"] = risk_display["risk_level"].map(emoji_map)
+    styled = risk_display[["date", "tmax", "risk_level", "⚠️", "high_vulnerability"]]
+    styled.columns = ["Date", "Tmax (°C)", "Risk Level", "", "High Vulnerability?"]
+    st.subheader("📋 Heatwave Risk Table")
+    st.dataframe(styled)
 
