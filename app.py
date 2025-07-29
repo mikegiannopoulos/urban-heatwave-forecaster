@@ -81,7 +81,7 @@ st.title(f"Heatwave Risk Assessment – {city}")
 
 import time
 
-if st.button("🔄 Generate Heatwave Forecast", type="primary"):
+if st.button("Generate Heatwave Forecast", type="primary"):
         
     # Create a placeholder for the gear
     gear_placeholder = st.empty()
