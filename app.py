@@ -213,5 +213,5 @@ if st.button("Generate Heatwave Forecast", type="primary"):
     styled = styled.reset_index(drop=True)
 
     st.subheader("📋 Heatwave Risk Table")
-    st.dataframe(styled)
+    st.table(styled)
 
