@@ -18,20 +18,13 @@ st.markdown("""
   100% { transform: rotate(360deg); }
 }
 
-.gears {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  margin: 20px 0;
-}
-
 .gear {
-  width: 100px;
-  height: 100px;
+  width: 50px;
+  height: 50px;
   border: 6px solid #ff4b4b;  /* matches button color */
   border-radius: 50%;
   border-top-color: transparent;
-  margin: 0 10px;
+  margin: 20px auto;
   animation: spin 1s linear infinite;
 }
 </style>
