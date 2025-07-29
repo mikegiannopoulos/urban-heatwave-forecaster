@@ -164,7 +164,7 @@ if st.button("Generate Heatwave Forecast", type="primary"):
         y=fig_df["tmax"],
         mode="lines+markers",
         name="Tmax",
-        line=dict(color="blue", width=2),
+        line=dict(color="aquamarine", width=2),
         marker=dict(size=6)
     ))
 
