@@ -82,11 +82,11 @@ st.title(f"Heatwave Risk Assessment – {city}")
 import time
 
 if st.button("🔄 Generate Heatwave Forecast", type="primary"):
-    
-    st.markdown('<div class="gear"></div>', unsafe_allow_html=True)
-    
+        
     # Create a placeholder for the gear
     gear_placeholder = st.empty()
+    gear_placeholder.markdown('<div class="gear"></div>', unsafe_allow_html=True)
+
 
     # Pause 2 seconds before starting computation
     time.sleep(2)
