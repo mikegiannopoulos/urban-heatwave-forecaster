@@ -60,29 +60,31 @@ lat, lon = latlon[city]
 st.title(f"Heatwave Risk Assessment – {city}")
 
 if st.button("🔄 Generate Heatwave Forecast", type="primary"):
-    # Fetch forecast
+
+    # 1. Fetch forecast
     with st.spinner("Fetching forecast..."):
         forecast_df = data_fetcher.fetch_ecmwf_forecast(lat, lon, city)
 
-    # Heatwave detection
+    # 2. Heatwave detection
     clim_path = Path(f"data/processed/{city_lower}_climatology_95p.csv")
     forecast_path = Path(f"data/raw/{city_lower}_forecast.csv")
     forecast_df.to_csv(forecast_path, index=False)
+    detected_df = detect_heatwaves.detect_heatwaves(forecast_path, clim_path)
 
-    with st.spinner("🔍 Calculating climatology and heatwave risk..."):
-        detected_df = detect_heatwaves.detect_heatwaves(forecast_path, clim_path)
-        detected_df.to_csv(Path(f"data/processed/{city_lower}_forecast_with_heatwaves.csv"), index=False)
+    # Ensure 'is_hot' exists
+    if "is_hot" not in detected_df.columns and "exceeds_95p" in detected_df.columns:
+        detected_df["is_hot"] = detected_df["exceeds_95p"]
 
-        if "is_hot" not in detected_df.columns and "exceeds_95p" in detected_df.columns:
-            detected_df["is_hot"] = detected_df["exceeds_95p"]
-
-        vulnerability_df = pd.read_csv("data/raw/urban_vulnerability.csv")
-        risk_df = risk_model.assess_heatwave_risk(detected_df, vulnerability_df)
+    # 3. Risk assessment
+    vulnerability_df = pd.read_csv("data/raw/urban_vulnerability.csv")
+    risk_df = risk_model.assess_heatwave_risk(detected_df, vulnerability_df)
 
     # --- Summary Metrics ---
     heatwave_days = detected_df["heatwave_id"].notna().sum()
     extreme_days = (risk_df["risk_level"] == "Extreme").sum()
-    elderly_pct = int(vulnerability_df.loc[vulnerability_df["city"] == city_lower, "elderly_percent"].iloc[0])
+    elderly_pct = int(
+        vulnerability_df.loc[vulnerability_df["city"] == city_lower, "elderly_percent"].iloc[0]
+    )
 
     with st.expander("📦 How the Data Flows"):
         st.markdown("""
