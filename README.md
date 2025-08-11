@@ -1,5 +1,7 @@
 # 🌡️ [Urban Heatwave Impact Forecaster](https://urban-heatwave-forecaster.streamlit.app/) – Real-time Detection & Risk Assessment
 
+![Heatwave Forecast Demo](docs/forecast_demo.gif)
+
 Open-source pipeline that **fetches weather data, calculates climatological normals, detects heatwaves, scores their risk, and serves everything through an interactive Streamlit dashboard**.
 Built for researchers, city planners, or anyone who needs timely insight into extreme urban heat events.
 
