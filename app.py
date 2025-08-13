@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import sys
+from PIL import Image
 from pathlib import Path
 
 # Fix: add src/ to path so Streamlit can find your module
@@ -9,17 +10,21 @@ sys.path.append(str(Path(__file__).resolve().parent / "src"))
 
 from urban_heatwave_forecaster import data_fetcher, detect_heatwaves, risk_model
 
-st.set_page_config(page_title="Urban Heatwave Forecaster", layout="wide")
+# --- Paths & logo ---
+ROOT = Path(__file__).resolve().parent
+LOGO_PATH = ROOT / "assets" / "urban-heatwave-forecaster.png"
 
-# Display logo centered
-st.markdown(
-    """
-    <div style="text-align: center;">
-        <img src="assets/urban-heatwave-forecaster.png" alt="Urban Heatwave Forecaster Logo" width="120">
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+# If the file path is wrong, this will raise early and be obvious
+logo_img = Image.open(LOGO_PATH)
+
+# Page config (icon shows in browser/tab and Streamlit menu)
+st.set_page_config(page_title="Urban Heatwave Forecaster",
+                   page_icon=logo_img, layout="wide")
+
+# Centered logo at the top
+col_l, col_c, col_r = st.columns([1, 2, 1])
+with col_c:
+    st.image(logo_img, width=120)   # adjust width as you like
 
 
 st.markdown("""
