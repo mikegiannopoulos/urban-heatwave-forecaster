@@ -11,6 +11,17 @@ from urban_heatwave_forecaster import data_fetcher, detect_heatwaves, risk_model
 
 st.set_page_config(page_title="Urban Heatwave Forecaster", layout="wide")
 
+# Display logo centered
+st.markdown(
+    """
+    <div style="text-align: center;">
+        <img src="assets/urban-heatwave-forecaster.png" alt="Urban Heatwave Forecaster Logo" width="120">
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+
 st.markdown("""
 <style>
 @keyframes spin {
