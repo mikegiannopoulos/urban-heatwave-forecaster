@@ -21,10 +21,12 @@ logo_img = Image.open(LOGO_PATH)
 st.set_page_config(page_title="Urban Heatwave Forecaster",
                    page_icon=logo_img, layout="wide")
 
-# Centered logo at the top
-col_l, col_c, col_r = st.columns([1, 2, 1])
-with col_c:
-    st.image(logo_img, width=120)   # adjust width as you like
+left, right = st.columns([0.12, 0.88])  # adjust ratio as needed
+with left:
+    st.image(logo_img, width=70)
+with right:
+    # We'll set the title dynamically later when city is chosen
+    st.markdown("## Urban Heatwave Forecaster")
 
 
 st.markdown("""
