@@ -1,4 +1,4 @@
-# <img src="assets/urban-heatwave-forecaster.png" alt="Urban Heatwave Forecaster Logo" width="40"> [Urban Heatwave Impact Forecaster](https://urban-heatwave-forecaster.streamlit.app/) – Real-time Detection & Risk Assessment
+# <img src="assets/urban-heatwave-forecaster.png" alt="Urban Heatwave Forecaster Logo" width="80"> [Urban Heatwave Impact Forecaster](https://urban-heatwave-forecaster.streamlit.app/) – Real-time Detection & Risk Assessment
 
 
 Open-source pipeline that **fetches weather data, calculates climatological normals, detects heatwaves, scores their risk, and serves everything through an interactive Streamlit dashboard**.
