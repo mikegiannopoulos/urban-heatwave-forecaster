@@ -1,6 +1,3 @@
-# 🌡️ [Urban Heatwave Impact Forecaster](https://urban-heatwave-forecaster.streamlit.app/) – Real-time Detection & Risk Assessment
-
-
 # <img src="assets/urban-heatwave-forecaster.png" alt="Urban Heatwave Forecaster Logo" width="40"> [Urban Heatwave Impact Forecaster](https://urban-heatwave-forecaster.streamlit.app/) – Real-time Detection & Risk Assessment
 
 
