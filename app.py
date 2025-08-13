@@ -23,7 +23,7 @@ st.set_page_config(page_title="Urban Heatwave Forecaster",
 
 left, right = st.columns([0.12, 0.88])  # adjust ratio as needed
 with left:
-    st.image(logo_img, width=70)
+    st.image(logo_img, width=100)
 with right:
     # We'll set the title dynamically later when city is chosen
     st.markdown("## Urban Heatwave Forecaster")
