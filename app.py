@@ -21,7 +21,7 @@ logo_img = Image.open(LOGO_PATH)
 st.set_page_config(page_title="Urban Heatwave Forecaster",
                    page_icon=logo_img, layout="wide")
 
-left, right = st.columns([0.12, 0.88])  # adjust ratio as needed
+left, right = st.columns([0.07, 0.93])  # adjust ratio as needed
 with left:
     st.image(logo_img, width=100)
 with right:
