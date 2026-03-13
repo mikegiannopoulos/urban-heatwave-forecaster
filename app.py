@@ -27,6 +27,24 @@ def base_risk_from_tmax(temp: float) -> str:
         return "Mild"
     return "None"
 
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def run_pipeline_for_city(city_name: str, lat: float, lon: float):
+    city_lower = city_name.lower()
+    forecast_df = data_fetcher.fetch_ecmwf_forecast(lat, lon, city_name)
+
+    clim_path = Path(f"data/processed/{city_lower}_climatology_95p.csv")
+    forecast_path = Path(f"data/raw/{city_lower}_forecast.csv")
+    forecast_df.to_csv(forecast_path, index=False)
+    detected_df = detect_heatwaves.detect_heatwaves(forecast_path, clim_path)
+
+    if "is_hot" not in detected_df.columns and "exceeds_95p" in detected_df.columns:
+        detected_df["is_hot"] = detected_df["exceeds_95p"]
+
+    vulnerability_df = pd.read_csv("data/raw/urban_vulnerability.csv")
+    risk_df = risk_model.assess_heatwave_risk(detected_df.copy(), vulnerability_df)
+    return detected_df, risk_df
+
 # --- Paths & logo ---
 ROOT = Path(__file__).resolve().parent
 LOGO_PATH = ROOT / "assets" / "urban-heatwave-forecaster.png"
@@ -127,6 +145,11 @@ with st.expander("📦 How the Data Flows"):
 # --- Sidebar: City selection ---
 city = st.sidebar.selectbox("Select a city", ["Athens", "Rome", "Stockholm", "London"])
 city_lower = city.lower()
+run_multi_city_comparison = st.sidebar.checkbox(
+    "Enable 4-city comparison",
+    value=False,
+    help="Runs additional forecast calls for all available cities."
+)
 
 # --- Coordinates ---
 latlon = {
@@ -359,3 +382,158 @@ if st.button("Generate Heatwave Forecast", type="primary"):
 
     st.subheader("📋 Heatwave Risk Table")
     st.dataframe(styled)
+
+    if run_multi_city_comparison:
+        st.subheader("🌍 4-City Comparison")
+        st.caption(
+            "Comparing Athens, Rome, Stockholm, and London using the same pipeline and risk rules."
+        )
+
+        with st.spinner("Building multi-city comparison..."):
+            comparison_rows = []
+            for comp_city, (comp_lat, comp_lon) in latlon.items():
+                if comp_city == city:
+                    comp_detected_df = fig_df.copy()
+                    comp_risk_df = risk_df.copy()
+                else:
+                    comp_detected_df, comp_risk_df = run_pipeline_for_city(
+                        comp_city,
+                        comp_lat,
+                        comp_lon
+                    )
+                    comp_detected_df = comp_detected_df.copy()
+                    comp_detected_df["date"] = pd.to_datetime(comp_detected_df["date"])
+                    comp_risk_df = comp_risk_df.copy()
+                    comp_risk_df["date"] = pd.to_datetime(comp_risk_df["date"])
+
+                comp_detected_df["tmax_anomaly"] = (
+                    comp_detected_df["tmax"] - comp_detected_df["tmax_95p"]
+                )
+                comp_risk_df["base_risk_level"] = comp_risk_df["tmax"].apply(base_risk_from_tmax)
+                comp_risk_df["base_risk_score"] = comp_risk_df["base_risk_level"].map(RISK_TO_SCORE)
+                comp_risk_df["adjusted_risk_score"] = comp_risk_df["risk_level"].map(RISK_TO_SCORE)
+                comp_risk_df["risk_escalated"] = (
+                    comp_risk_df["adjusted_risk_score"] > comp_risk_df["base_risk_score"]
+                )
+
+                max_risk_score = int(comp_risk_df["adjusted_risk_score"].max())
+                comparison_rows.append(
+                    {
+                        "city": comp_city,
+                        "lat": comp_lat,
+                        "lon": comp_lon,
+                        "heatwave_days": int(comp_detected_df["heatwave_id"].notna().sum()),
+                        "escalated_days": int(comp_risk_df["risk_escalated"].sum()),
+                        "peak_tmax": float(comp_detected_df["tmax"].max()),
+                        "peak_tmax_anomaly": float(comp_detected_df["tmax_anomaly"].max()),
+                        "max_risk_score": max_risk_score,
+                        "max_risk_level": RISK_ORDER[max_risk_score],
+                    }
+                )
+
+            compare_df = pd.DataFrame(comparison_rows).sort_values(
+                ["max_risk_score", "peak_tmax"],
+                ascending=[False, False]
+            )
+
+        map_text = compare_df.apply(
+            lambda row: (
+                f"{row['city']}<br>"
+                f"Max risk: {row['max_risk_level']}<br>"
+                f"Peak Tmax: {row['peak_tmax']:.1f}°C<br>"
+                f"Heatwave days: {row['heatwave_days']}"
+            ),
+            axis=1
+        )
+
+        map_fig = go.Figure(
+            go.Scattergeo(
+                lon=compare_df["lon"],
+                lat=compare_df["lat"],
+                mode="markers+text",
+                text=compare_df["city"],
+                textposition="top center",
+                hovertemplate=map_text + "<extra></extra>",
+                marker=dict(
+                    size=12 + (compare_df["heatwave_days"] * 2),
+                    color=compare_df["max_risk_score"],
+                    cmin=0,
+                    cmax=4,
+                    colorscale=[
+                        [0.00, "#a8ddb5"],
+                        [0.25, "#fee08b"],
+                        [0.50, "#fdae61"],
+                        [0.75, "#f46d43"],
+                        [1.00, "#d73027"],
+                    ],
+                    line=dict(color="white", width=1),
+                    colorbar=dict(
+                        title="Max Risk",
+                        tickmode="array",
+                        tickvals=list(range(len(RISK_ORDER))),
+                        ticktext=RISK_ORDER
+                    ),
+                ),
+            )
+        )
+        map_fig.update_layout(
+            margin=dict(l=10, r=10, t=30, b=10),
+            geo=dict(
+                scope="europe",
+                projection_type="natural earth",
+                showland=True,
+                landcolor="#f7f3e9",
+                showcountries=True,
+                countrycolor="#c9c0ad",
+                lataxis=dict(range=[35, 62]),
+                lonaxis=dict(range=[-12, 31]),
+            ),
+            title="City Risk Map (Marker Color = Max Risk, Marker Size = Heatwave Days)"
+        )
+        st.plotly_chart(map_fig, use_container_width=True)
+
+        compare_chart = go.Figure()
+        compare_chart.add_trace(
+            go.Bar(
+                x=compare_df["city"],
+                y=compare_df["peak_tmax"],
+                name="Peak Tmax (°C)",
+                marker_color="#ff6f3c"
+            )
+        )
+        compare_chart.add_trace(
+            go.Bar(
+                x=compare_df["city"],
+                y=compare_df["peak_tmax_anomaly"],
+                name="Peak Tmax anomaly (°C)",
+                marker_color="#6a4c93"
+            )
+        )
+        compare_chart.update_layout(
+            barmode="group",
+            xaxis_title="City",
+            yaxis_title="Temperature (°C)",
+            margin=dict(l=40, r=20, t=30, b=40),
+            legend=dict(title="")
+        )
+        st.plotly_chart(compare_chart, use_container_width=True)
+
+        compare_display = compare_df[
+            [
+                "city",
+                "max_risk_level",
+                "heatwave_days",
+                "escalated_days",
+                "peak_tmax",
+                "peak_tmax_anomaly",
+            ]
+        ].copy()
+        compare_display.columns = [
+            "City",
+            "Max Risk",
+            "Heatwave Days",
+            "Escalation Days",
+            "Peak Tmax (°C)",
+            "Peak Tmax Anomaly (°C)",
+        ]
+        st.dataframe(compare_display, use_container_width=True, hide_index=True)
