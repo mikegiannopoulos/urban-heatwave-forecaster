@@ -7,8 +7,10 @@ from datetime import timedelta
 import time
 import plotly.graph_objects as go
 
-# Fix: add src/ to path so Streamlit can find your module
-sys.path.append(str(Path(__file__).resolve().parent / "src"))
+# Ensure local src/ is first so deployed envs don't import stale installed packages.
+SRC_PATH = str(Path(__file__).resolve().parent / "src")
+if SRC_PATH not in sys.path:
+    sys.path.insert(0, SRC_PATH)
 
 from urban_heatwave_forecaster import data_fetcher, detect_heatwaves, risk_model
 
@@ -49,6 +51,73 @@ def enrich_risk_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     out["adjusted_risk_score"] = out["risk_level"].map(RISK_TO_SCORE)
     out["risk_escalated"] = out["adjusted_risk_score"] > out["base_risk_score"]
     return out
+
+
+def fetch_multi_model_forecast_compat(
+    lat: float,
+    lon: float,
+    city_name: str,
+    models: list[str],
+    forecast_days: int = 7,
+) -> tuple[pd.DataFrame, list[dict[str, str]]]:
+    if hasattr(data_fetcher, "fetch_multi_model_forecast"):
+        return data_fetcher.fetch_multi_model_forecast(
+            lat=lat,
+            lon=lon,
+            city_name=city_name,
+            models=models,
+            forecast_days=forecast_days,
+        )
+
+    # Backward-compatible fallback for environments that have only per-model fetch.
+    if hasattr(data_fetcher, "fetch_forecast_for_model"):
+        frames = []
+        failures: list[dict[str, str]] = []
+        for model in models:
+            try:
+                out = data_fetcher.fetch_forecast_for_model(
+                    lat=lat,
+                    lon=lon,
+                    city_name=city_name,
+                    model=model,
+                    forecast_days=forecast_days,
+                    save_path=Path(f"data/raw/{city_name.lower()}_{model}_forecast.csv"),
+                    include_model_col=True,
+                )
+                frames.append(out)
+            except Exception as exc:
+                failures.append({"model": model, "error": str(exc)})
+
+        if not frames:
+            raise RuntimeError("No requested models could be fetched in compatibility mode.")
+        return pd.concat(frames, ignore_index=True), failures
+
+    raise AttributeError(
+        "Deployed data_fetcher module is missing multi-model forecast functions."
+    )
+
+
+def detect_heatwaves_df_compat(
+    forecast_df: pd.DataFrame,
+    clim_path: Path,
+    min_run: int = 3,
+) -> pd.DataFrame:
+    if hasattr(detect_heatwaves, "detect_heatwaves_df"):
+        clim_df = pd.read_csv(clim_path)
+        return detect_heatwaves.detect_heatwaves_df(
+            forecast_df=forecast_df,
+            climatology_df=clim_df,
+            min_run=min_run,
+        )
+
+    temp_forecast_path = Path("data/raw/_temp_model_forecast.csv")
+    temp_forecast_path.parent.mkdir(parents=True, exist_ok=True)
+    forecast_df.to_csv(temp_forecast_path, index=False)
+    return detect_heatwaves.detect_heatwaves(
+        forecast_path=temp_forecast_path,
+        climatology_path=clim_path,
+        min_run=min_run,
+    )
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -438,24 +507,23 @@ if st.button("Generate Heatwave Forecast", type="primary"):
                 multi_forecast_df = pd.DataFrame()
                 with st.spinner("Fetching additional forecast models..."):
                     try:
-                        multi_forecast_df, failed_models = data_fetcher.fetch_multi_model_forecast(
+                        multi_forecast_df, failed_models = fetch_multi_model_forecast_compat(
                             lat=lat,
                             lon=lon,
                             city_name=city,
                             models=additional_models,
                             forecast_days=7,
                         )
-                    except RuntimeError:
+                    except (RuntimeError, AttributeError) as exc:
                         failed_models = [
-                            {"model": model, "error": "Forecast unavailable"} for model in additional_models
+                            {"model": model, "error": str(exc)} for model in additional_models
                         ]
 
                 if not multi_forecast_df.empty:
-                    clim_df = pd.read_csv(clim_path)
                     for model_code, model_forecast in multi_forecast_df.groupby("model"):
-                        model_detected = detect_heatwaves.detect_heatwaves_df(
+                        model_detected = detect_heatwaves_df_compat(
                             forecast_df=model_forecast[["date", "tmin", "tmax", "city"]],
-                            climatology_df=clim_df,
+                            clim_path=clim_path,
                             min_run=3,
                         )
                         if (
@@ -474,7 +542,7 @@ if st.button("Generate Heatwave Forecast", type="primary"):
 
             if failed_models:
                 failed_names = ", ".join(
-                    MODEL_LABEL_BY_CODE.get(item["model"], item["model"])
+                    f"{MODEL_LABEL_BY_CODE.get(item['model'], item['model'])}"
                     for item in failed_models
                 )
                 st.warning(
