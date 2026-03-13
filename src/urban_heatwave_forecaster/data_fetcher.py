@@ -3,7 +3,6 @@ import pandas as pd
 from pathlib import Path
 import requests_cache
 from retry_requests import retry
-from pathlib import Path
 
 # Always resolve paths from the repo root
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -64,7 +63,7 @@ def fetch_ecmwf_forecast(
         df_daily = df_daily[df_daily["date"] >= today].reset_index(drop=True)
 
 
-       # --- save ---
+    # --- save ---
     if save_path is None:
         save_path = DATA_DIR / f"{city_name.lower()}_forecast.csv"
     save_path = Path(save_path)

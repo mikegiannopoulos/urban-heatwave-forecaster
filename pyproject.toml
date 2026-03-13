@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Real-time detection and risk assessment of urban heatwaves"
 authors = [{name = "Michael Giannopoulos"}]
 readme = "README.md"
-license = {text = "MIT"}
+license = {text = "AGPL-3.0-only"}
 requires-python = ">=3.9"
 dependencies = [
   "pandas>=2.2,<2.4",
@@ -17,6 +17,10 @@ dependencies = [
   "rich>=13",
   "streamlit>=1.33",
   "plotly >=5.20",
+  "openmeteo-requests>=1.2",
+  "requests-cache>=1.2",
+  "retry-requests>=2.0",
+  "Pillow>=10.0",
 ]
 
 [project.optional-dependencies]

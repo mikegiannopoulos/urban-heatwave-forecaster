@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 import sys
 from PIL import Image
 from pathlib import Path
@@ -232,4 +231,3 @@ if st.button("Generate Heatwave Forecast", type="primary"):
 
     st.subheader("📋 Heatwave Risk Table")
     st.dataframe(styled)
-

@@ -50,6 +50,7 @@ urban-heatwave-forecaster/
 ├── outputs/                         # Results & figures (git-ignored)
 ├── requirements.txt                 # Runtime deps for Streamlit Cloud
 ├── pyproject.toml                   # Package & pinned deps
+├── LICENSE                          # AGPL-3.0 license text
 ├── .gitignore
 └── README.md
 ```
@@ -130,8 +131,7 @@ python -m urban_heatwave_forecaster.cli fetch --city stockholm
 ## 📜 License
 
 GNU Affero General Public License v3.0 (AGPL-3.0) © 2025 Michael Giannopoulos & Contributors
-This project is free to use, modify, and share under the terms of the AGPLv3.
-**Commercial use is prohibited unless the source code of derivative works is also made public.**
+This project is licensed under AGPL-3.0. See `LICENSE` for the full text and conditions.
 
 
 ---
