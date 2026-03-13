@@ -1,14 +1,11 @@
 import pandas as pd
 from pathlib import Path
 
-def detect_heatwaves(forecast_path, climatology_path, min_run=3):
-    """Return forecast df with two new columns:
-       • exceeds_95p  -  both Tmin & Tmax above daily 95-percentile
-       • heatwave_id  -  integer ID of each ≥min_run-day event (NaN elsewhere)
-    """
-    # ── load ────────────────────────────────────────────────────────────────
-    fc  = pd.read_csv(forecast_path,   parse_dates=["date"])
-    clim = pd.read_csv(climatology_path)
+def detect_heatwaves_df(forecast_df: pd.DataFrame, climatology_df: pd.DataFrame, min_run: int = 3):
+    """Return forecast df with heatwave flags using in-memory DataFrames."""
+    fc = forecast_df.copy()
+    clim = climatology_df.copy()
+    fc["date"] = pd.to_datetime(fc["date"])
 
     # ── join thresholds ────────────────────────────────────────────────────
     fc["day_of_year"] = fc["date"].dt.dayofyear
@@ -21,16 +18,22 @@ def detect_heatwaves(forecast_path, climatology_path, min_run=3):
     )
 
     # ── identify consecutive runs ≥ min_run ────────────────────────────────
-    # 1) break sequence whenever the flag is False
     grp = (fc["exceeds_95p"] != fc["exceeds_95p"].shift()).cumsum()
-    # 2) size of each run
     run_lengths = fc.groupby(grp)["exceeds_95p"].transform("sum")
-    # 3) assign ID only to runs long enough
-    fc["heatwave_id"] = (
-        grp.where((fc["exceeds_95p"]) & (run_lengths >= min_run))
-    )
+    fc["heatwave_id"] = grp.where((fc["exceeds_95p"]) & (run_lengths >= min_run))
 
     return fc.drop(columns=["day_of_year"])
+
+
+def detect_heatwaves(forecast_path, climatology_path, min_run=3):
+    """Return forecast df with two new columns:
+       • exceeds_95p  -  both Tmin & Tmax above daily 95-percentile
+       • heatwave_id  -  integer ID of each ≥min_run-day event (NaN elsewhere)
+    """
+    # ── load ────────────────────────────────────────────────────────────────
+    fc = pd.read_csv(forecast_path, parse_dates=["date"])
+    clim = pd.read_csv(climatology_path)
+    return detect_heatwaves_df(fc, clim, min_run=min_run)
 
 # ── CLI helper for quick testing ───────────────────────────────────────────
 if __name__ == "__main__":

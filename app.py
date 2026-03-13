@@ -14,6 +14,19 @@ from urban_heatwave_forecaster import data_fetcher, detect_heatwaves, risk_model
 
 RISK_ORDER = ["None", "Mild", "Moderate", "High", "Extreme"]
 RISK_TO_SCORE = {risk: score for score, risk in enumerate(RISK_ORDER)}
+RISK_COLORS = {
+    "None": "#a8ddb5",
+    "Mild": "#fee08b",
+    "Moderate": "#fdae61",
+    "High": "#f46d43",
+    "Extreme": "#d73027",
+}
+MODEL_OPTIONS = {
+    "ECMWF IFS 0.25°": "ecmwf_ifs025",
+    "GFS Seamless": "gfs_seamless",
+    "ICON Seamless": "icon_seamless",
+}
+MODEL_LABEL_BY_CODE = {code: label for label, code in MODEL_OPTIONS.items()}
 
 
 def base_risk_from_tmax(temp: float) -> str:
@@ -26,6 +39,16 @@ def base_risk_from_tmax(temp: float) -> str:
     if temp >= 30:
         return "Mild"
     return "None"
+
+
+def enrich_risk_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    out["date"] = pd.to_datetime(out["date"])
+    out["base_risk_level"] = out["tmax"].apply(base_risk_from_tmax)
+    out["base_risk_score"] = out["base_risk_level"].map(RISK_TO_SCORE)
+    out["adjusted_risk_score"] = out["risk_level"].map(RISK_TO_SCORE)
+    out["risk_escalated"] = out["adjusted_risk_score"] > out["base_risk_score"]
+    return out
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -43,6 +66,7 @@ def run_pipeline_for_city(city_name: str, lat: float, lon: float):
 
     vulnerability_df = pd.read_csv("data/raw/urban_vulnerability.csv")
     risk_df = risk_model.assess_heatwave_risk(detected_df.copy(), vulnerability_df)
+    risk_df = enrich_risk_dataframe(risk_df)
     return detected_df, risk_df
 
 # --- Paths & logo ---
@@ -150,6 +174,18 @@ run_multi_city_comparison = st.sidebar.checkbox(
     value=False,
     help="Runs additional forecast calls for all available cities."
 )
+run_probabilistic_risk = st.sidebar.checkbox(
+    "Enable probabilistic multi-model risk",
+    value=True,
+    help="Combines multiple weather models and shows risk probabilities."
+)
+prob_model_labels = st.sidebar.multiselect(
+    "Models for probabilistic risk",
+    options=list(MODEL_OPTIONS.keys()),
+    default=list(MODEL_OPTIONS.keys()),
+    disabled=not run_probabilistic_risk,
+)
+selected_prob_models = [MODEL_OPTIONS[label] for label in prob_model_labels]
 
 # --- Coordinates ---
 latlon = {
@@ -193,6 +229,7 @@ if st.button("Generate Heatwave Forecast", type="primary"):
     # 3. Risk assessment
     vulnerability_df = pd.read_csv("data/raw/urban_vulnerability.csv")
     risk_df = risk_model.assess_heatwave_risk(detected_df, vulnerability_df)
+    risk_df = enrich_risk_dataframe(risk_df)
     
     # --- Summary Metrics ---
     heatwave_days = detected_df["heatwave_id"].notna().sum()
@@ -209,13 +246,6 @@ if st.button("Generate Heatwave Forecast", type="primary"):
     fig_df["Heatwave"] = fig_df["heatwave_id"].notna().map({True: "Yes", False: "No"})
     fig_df["tmax_anomaly"] = fig_df["tmax"] - fig_df["tmax_95p"]
     fig_df["tmin_anomaly"] = fig_df["tmin"] - fig_df["tmin_95p"]
-
-    risk_df = risk_df.copy()
-    risk_df["date"] = pd.to_datetime(risk_df["date"])
-    risk_df["base_risk_level"] = risk_df["tmax"].apply(base_risk_from_tmax)
-    risk_df["base_risk_score"] = risk_df["base_risk_level"].map(RISK_TO_SCORE)
-    risk_df["adjusted_risk_score"] = risk_df["risk_level"].map(RISK_TO_SCORE)
-    risk_df["risk_escalated"] = risk_df["adjusted_risk_score"] > risk_df["base_risk_score"]
 
     city_vuln = vulnerability_df.loc[vulnerability_df["city"] == city_lower].iloc[0]
     escalated_days = int(risk_df["risk_escalated"].sum())
@@ -383,6 +413,224 @@ if st.button("Generate Heatwave Forecast", type="primary"):
     st.subheader("📋 Heatwave Risk Table")
     st.dataframe(styled)
 
+    if run_probabilistic_risk:
+        st.subheader("🎲 Probabilistic Multi-Model Risk")
+        st.caption(
+            "Daily probabilities built from multiple forecast models using the same detection and risk pipeline."
+        )
+
+        if not selected_prob_models:
+            st.info("Select at least one model in the sidebar to compute probabilistic risk.")
+        else:
+            ensemble_frames = []
+            failed_models = []
+
+            if "ecmwf_ifs025" in selected_prob_models:
+                ecmwf_frame = risk_df.copy()
+                ecmwf_frame["model"] = "ecmwf_ifs025"
+                ensemble_frames.append(ecmwf_frame)
+
+            additional_models = [
+                model for model in selected_prob_models if model != "ecmwf_ifs025"
+            ]
+
+            if additional_models:
+                multi_forecast_df = pd.DataFrame()
+                with st.spinner("Fetching additional forecast models..."):
+                    try:
+                        multi_forecast_df, failed_models = data_fetcher.fetch_multi_model_forecast(
+                            lat=lat,
+                            lon=lon,
+                            city_name=city,
+                            models=additional_models,
+                            forecast_days=7,
+                        )
+                    except RuntimeError:
+                        failed_models = [
+                            {"model": model, "error": "Forecast unavailable"} for model in additional_models
+                        ]
+
+                if not multi_forecast_df.empty:
+                    clim_df = pd.read_csv(clim_path)
+                    for model_code, model_forecast in multi_forecast_df.groupby("model"):
+                        model_detected = detect_heatwaves.detect_heatwaves_df(
+                            forecast_df=model_forecast[["date", "tmin", "tmax", "city"]],
+                            climatology_df=clim_df,
+                            min_run=3,
+                        )
+                        if (
+                            "is_hot" not in model_detected.columns
+                            and "exceeds_95p" in model_detected.columns
+                        ):
+                            model_detected["is_hot"] = model_detected["exceeds_95p"]
+
+                        model_risk = risk_model.assess_heatwave_risk(
+                            model_detected.copy(),
+                            vulnerability_df.copy(),
+                        )
+                        model_risk = enrich_risk_dataframe(model_risk)
+                        model_risk["model"] = model_code
+                        ensemble_frames.append(model_risk)
+
+            if failed_models:
+                failed_names = ", ".join(
+                    MODEL_LABEL_BY_CODE.get(item["model"], item["model"])
+                    for item in failed_models
+                )
+                st.warning(
+                    f"Excluded unavailable models in this run: {failed_names}."
+                )
+
+            if ensemble_frames:
+                ensemble_risk_df = pd.concat(ensemble_frames, ignore_index=True)
+                ensemble_risk_df["date"] = pd.to_datetime(ensemble_risk_df["date"])
+
+                models_available = (
+                    ensemble_risk_df.groupby("date")["model"].nunique().sort_index()
+                )
+                risk_counts = (
+                    ensemble_risk_df.pivot_table(
+                        index="date",
+                        columns="risk_level",
+                        values="model",
+                        aggfunc="count",
+                        fill_value=0,
+                    )
+                    .reindex(columns=RISK_ORDER, fill_value=0)
+                    .sort_index()
+                )
+                risk_probs = risk_counts.div(risk_counts.sum(axis=1), axis=0).fillna(0.0)
+
+                probability_df = pd.DataFrame(index=risk_probs.index)
+                probability_df["models_available"] = models_available
+                probability_df["p_heatwave"] = (
+                    ensemble_risk_df.groupby("date")["heatwave_id"]
+                    .apply(lambda s: s.notna().mean())
+                    .sort_index()
+                )
+                probability_df["p_high_plus"] = (
+                    ensemble_risk_df.groupby("date")["risk_level"]
+                    .apply(lambda s: s.isin(["High", "Extreme"]).mean())
+                    .sort_index()
+                )
+                probability_df["p_extreme"] = (
+                    ensemble_risk_df.groupby("date")["risk_level"]
+                    .apply(lambda s: (s == "Extreme").mean())
+                    .sort_index()
+                )
+                probability_df["expected_risk_score"] = (
+                    ensemble_risk_df.groupby("date")["adjusted_risk_score"].mean().sort_index()
+                )
+                probability_df["most_likely_risk"] = risk_probs.idxmax(axis=1)
+
+                def _consensus_from_probs(row: pd.Series) -> str:
+                    for level in reversed(RISK_ORDER):
+                        if row[level] >= 0.5:
+                            return level
+                    return "Uncertain"
+
+                probability_df["consensus_risk"] = risk_probs.apply(_consensus_from_probs, axis=1)
+
+                model_codes_used = list(dict.fromkeys(ensemble_risk_df["model"]))
+                model_labels_used = [
+                    f"{MODEL_LABEL_BY_CODE.get(code, code)} ({code})"
+                    for code in model_codes_used
+                ]
+                st.caption(f"Models used: {', '.join(model_labels_used)}")
+
+                prob_fig = go.Figure()
+                prob_fig.add_trace(
+                    go.Scatter(
+                        x=probability_df.index,
+                        y=probability_df["p_heatwave"] * 100,
+                        mode="lines+markers",
+                        name="P(Heatwave)",
+                        line=dict(color="#6a4c93", width=2.5),
+                    )
+                )
+                prob_fig.add_trace(
+                    go.Scatter(
+                        x=probability_df.index,
+                        y=probability_df["p_high_plus"] * 100,
+                        mode="lines+markers",
+                        name="P(High+)",
+                        line=dict(color="#f46d43", width=2.5),
+                    )
+                )
+                prob_fig.add_trace(
+                    go.Scatter(
+                        x=probability_df.index,
+                        y=probability_df["p_extreme"] * 100,
+                        mode="lines+markers",
+                        name="P(Extreme)",
+                        line=dict(color="#d73027", width=2.5),
+                    )
+                )
+                prob_fig.update_layout(
+                    xaxis_title="Date",
+                    yaxis_title="Probability (%)",
+                    yaxis=dict(range=[0, 100]),
+                    margin=dict(l=40, r=20, t=30, b=40),
+                    legend=dict(title=""),
+                )
+                st.plotly_chart(prob_fig, use_container_width=True)
+
+                dist_fig = go.Figure()
+                for level in RISK_ORDER:
+                    dist_fig.add_trace(
+                        go.Bar(
+                            x=risk_probs.index,
+                            y=risk_probs[level] * 100,
+                            name=level,
+                            marker_color=RISK_COLORS[level],
+                        )
+                    )
+                dist_fig.update_layout(
+                    barmode="stack",
+                    xaxis_title="Date",
+                    yaxis_title="Risk Probability (%)",
+                    yaxis=dict(range=[0, 100]),
+                    margin=dict(l=40, r=20, t=30, b=40),
+                    legend=dict(title=""),
+                    title="Risk-Level Probability Distribution by Day",
+                )
+                st.plotly_chart(dist_fig, use_container_width=True)
+
+                prob_display = probability_df.reset_index().copy()
+                prob_display["date"] = pd.to_datetime(prob_display["date"]).dt.strftime("%a, %b %d")
+                prob_display["P(Heatwave)"] = (prob_display["p_heatwave"] * 100).round(1)
+                prob_display["P(High+)"] = (prob_display["p_high_plus"] * 100).round(1)
+                prob_display["P(Extreme)"] = (prob_display["p_extreme"] * 100).round(1)
+                prob_display["Expected Risk Score"] = prob_display["expected_risk_score"].round(2)
+                prob_display["Models"] = prob_display["models_available"].astype(int)
+
+                st.dataframe(
+                    prob_display[
+                        [
+                            "date",
+                            "Models",
+                            "P(Heatwave)",
+                            "P(High+)",
+                            "P(Extreme)",
+                            "most_likely_risk",
+                            "consensus_risk",
+                            "Expected Risk Score",
+                        ]
+                    ].rename(
+                        columns={
+                            "date": "Date",
+                            "most_likely_risk": "Most Likely Risk",
+                            "consensus_risk": "Consensus Risk (>=50%)",
+                        }
+                    ),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
+                st.error(
+                    "No probabilistic output available because all selected model fetches failed."
+                )
+
     if run_multi_city_comparison:
         st.subheader("🌍 4-City Comparison")
         st.caption(
@@ -409,12 +657,7 @@ if st.button("Generate Heatwave Forecast", type="primary"):
                 comp_detected_df["tmax_anomaly"] = (
                     comp_detected_df["tmax"] - comp_detected_df["tmax_95p"]
                 )
-                comp_risk_df["base_risk_level"] = comp_risk_df["tmax"].apply(base_risk_from_tmax)
-                comp_risk_df["base_risk_score"] = comp_risk_df["base_risk_level"].map(RISK_TO_SCORE)
-                comp_risk_df["adjusted_risk_score"] = comp_risk_df["risk_level"].map(RISK_TO_SCORE)
-                comp_risk_df["risk_escalated"] = (
-                    comp_risk_df["adjusted_risk_score"] > comp_risk_df["base_risk_score"]
-                )
+                comp_risk_df = enrich_risk_dataframe(comp_risk_df)
 
                 max_risk_score = int(comp_risk_df["adjusted_risk_score"].max())
                 comparison_rows.append(
