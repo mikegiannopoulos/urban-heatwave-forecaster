@@ -3,11 +3,29 @@ import pandas as pd
 import sys
 from PIL import Image
 from pathlib import Path
+from datetime import timedelta
+import time
+import plotly.graph_objects as go
 
 # Fix: add src/ to path so Streamlit can find your module
 sys.path.append(str(Path(__file__).resolve().parent / "src"))
 
 from urban_heatwave_forecaster import data_fetcher, detect_heatwaves, risk_model
+
+RISK_ORDER = ["None", "Mild", "Moderate", "High", "Extreme"]
+RISK_TO_SCORE = {risk: score for score, risk in enumerate(RISK_ORDER)}
+
+
+def base_risk_from_tmax(temp: float) -> str:
+    if temp >= 38:
+        return "Extreme"
+    if temp >= 35:
+        return "High"
+    if temp >= 32:
+        return "Moderate"
+    if temp >= 30:
+        return "Mild"
+    return "None"
 
 # --- Paths & logo ---
 ROOT = Path(__file__).resolve().parent
@@ -122,8 +140,6 @@ lat, lon = latlon[city]
 # --- Button to Generate Forecast ---
 st.title(f"Heatwave Risk Assessment – {city}")
 
-import time
-
 if st.button("Generate Heatwave Forecast", type="primary"):
         
     # Create a placeholder for the gear
@@ -158,9 +174,6 @@ if st.button("Generate Heatwave Forecast", type="primary"):
     # --- Summary Metrics ---
     heatwave_days = detected_df["heatwave_id"].notna().sum()
     extreme_days = (risk_df["risk_level"] == "Extreme").sum()
-    elderly_pct = int(
-        vulnerability_df.loc[vulnerability_df["city"] == city_lower, "elderly_percent"].iloc[0]
-    )
 
     # --- Heatwave Message ---
     if detected_df["heatwave_id"].notna().any():
@@ -168,12 +181,39 @@ if st.button("Generate Heatwave Forecast", type="primary"):
     else:
         st.info(f"No heatwave forecasted for {city} in the next 7 days.")
 
-    # --- Plotly Chart ---
-    import plotly.graph_objects as go
-    from datetime import timedelta
-
     fig_df = detected_df.copy()
+    fig_df["date"] = pd.to_datetime(fig_df["date"])
     fig_df["Heatwave"] = fig_df["heatwave_id"].notna().map({True: "Yes", False: "No"})
+    fig_df["tmax_anomaly"] = fig_df["tmax"] - fig_df["tmax_95p"]
+    fig_df["tmin_anomaly"] = fig_df["tmin"] - fig_df["tmin_95p"]
+
+    risk_df = risk_df.copy()
+    risk_df["date"] = pd.to_datetime(risk_df["date"])
+    risk_df["base_risk_level"] = risk_df["tmax"].apply(base_risk_from_tmax)
+    risk_df["base_risk_score"] = risk_df["base_risk_level"].map(RISK_TO_SCORE)
+    risk_df["adjusted_risk_score"] = risk_df["risk_level"].map(RISK_TO_SCORE)
+    risk_df["risk_escalated"] = risk_df["adjusted_risk_score"] > risk_df["base_risk_score"]
+
+    city_vuln = vulnerability_df.loc[vulnerability_df["city"] == city_lower].iloc[0]
+    escalated_days = int(risk_df["risk_escalated"].sum())
+    max_tmax = float(fig_df["tmax"].max())
+    max_anomaly = float(fig_df["tmax_anomaly"].max())
+
+    # --- Summary Metrics ---
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Heatwave Days", heatwave_days)
+    m2.metric("Extreme-Risk Days", int(extreme_days))
+    m3.metric("Peak Tmax", f"{max_tmax:.1f}°C")
+    m4.metric("Tmax Peak Anomaly", f"{max_anomaly:+.1f}°C")
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Elderly Share", f"{city_vuln['elderly_percent']:.1f}%")
+    c2.metric("Green Cover", f"{city_vuln['green_cover_percent']:.1f}%")
+    c3.metric("Density", f"{int(city_vuln['density_per_km2']):,}/km²")
+    c4.metric("Risk Escalation Days", escalated_days)
+
+    # --- Plotly Chart 1: Forecast vs Climatology ---
+    st.subheader("📈 Forecast vs Climatology Thresholds")
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(
@@ -181,8 +221,30 @@ if st.button("Generate Heatwave Forecast", type="primary"):
         y=fig_df["tmax"],
         mode="lines+markers",
         name="Tmax",
-        line=dict(color="aqua", width=2),
+        line=dict(color="#ff6f3c", width=2.5),
         marker=dict(size=6)
+    ))
+    fig.add_trace(go.Scatter(
+        x=fig_df["date"],
+        y=fig_df["tmax_95p"],
+        mode="lines",
+        name="Tmax 95th pct",
+        line=dict(color="#ff6f3c", width=2, dash="dash")
+    ))
+    fig.add_trace(go.Scatter(
+        x=fig_df["date"],
+        y=fig_df["tmin"],
+        mode="lines+markers",
+        name="Tmin",
+        line=dict(color="#3399ff", width=2),
+        marker=dict(size=5)
+    ))
+    fig.add_trace(go.Scatter(
+        x=fig_df["date"],
+        y=fig_df["tmin_95p"],
+        mode="lines",
+        name="Tmin 95th pct",
+        line=dict(color="#3399ff", width=2, dash="dash")
     ))
 
     # Add shaded heatwave periods
@@ -201,15 +263,80 @@ if st.button("Generate Heatwave Forecast", type="primary"):
         ))
 
     fig.update_layout(
-        title="Max Temperature Forecast",
+        title="Daily Tmin/Tmax Against 95th-Percentile Normals",
         xaxis_title="Date",
-        yaxis_title="Tmax (°C)",
+        yaxis_title="Temperature (°C)",
         shapes=shapes,
         legend=dict(title=""),
         margin=dict(l=40, r=20, t=60, b=40)
     )
 
     st.plotly_chart(fig, use_container_width=True)
+
+    # --- Plotly Chart 2: Daily Anomalies ---
+    st.subheader("🌡️ Daily Temperature Anomalies vs 95th Percentile")
+    anomaly_fig = go.Figure()
+    anomaly_fig.add_trace(go.Bar(
+        x=fig_df["date"],
+        y=fig_df["tmax_anomaly"],
+        name="Tmax anomaly",
+        marker_color="#ff6f3c"
+    ))
+    anomaly_fig.add_trace(go.Bar(
+        x=fig_df["date"],
+        y=fig_df["tmin_anomaly"],
+        name="Tmin anomaly",
+        marker_color="#3399ff"
+    ))
+    anomaly_fig.add_hline(y=0, line_dash="dot", line_color="gray")
+    anomaly_fig.update_layout(
+        barmode="group",
+        xaxis_title="Date",
+        yaxis_title="Anomaly (°C)",
+        margin=dict(l=40, r=20, t=30, b=40),
+        legend=dict(title="")
+    )
+    st.plotly_chart(anomaly_fig, use_container_width=True)
+
+    # --- Plotly Chart 3: Risk decomposition ---
+    st.subheader("🧮 Risk Decomposition: Base vs Vulnerability-Adjusted")
+    risk_fig = go.Figure()
+    risk_fig.add_trace(go.Scatter(
+        x=risk_df["date"],
+        y=risk_df["base_risk_score"],
+        mode="lines+markers",
+        name="Base risk (temperature only)",
+        line=dict(color="#8e8e8e", width=2, dash="dot"),
+        marker=dict(size=7)
+    ))
+    risk_fig.add_trace(go.Scatter(
+        x=risk_df["date"],
+        y=risk_df["adjusted_risk_score"],
+        mode="lines+markers",
+        name="Adjusted risk (with vulnerability)",
+        line=dict(color="#d7263d", width=3),
+        marker=dict(size=9)
+    ))
+    risk_fig.add_trace(go.Scatter(
+        x=risk_df.loc[risk_df["risk_escalated"], "date"],
+        y=risk_df.loc[risk_df["risk_escalated"], "adjusted_risk_score"],
+        mode="markers",
+        name="Escalated by vulnerability",
+        marker=dict(size=13, color="#ffa600", symbol="diamond")
+    ))
+    risk_fig.update_layout(
+        xaxis_title="Date",
+        yaxis_title="Risk Level",
+        yaxis=dict(
+            tickmode="array",
+            tickvals=list(range(len(RISK_ORDER))),
+            ticktext=RISK_ORDER,
+            range=[-0.3, len(RISK_ORDER) - 0.7]
+        ),
+        margin=dict(l=40, r=20, t=30, b=40),
+        legend=dict(title="")
+    )
+    st.plotly_chart(risk_fig, use_container_width=True)
 
     # --- Color-coded Risk Table ---
     emoji_map = {"Extreme": "🔥🔥", "High": "🔥", "Moderate": "🌡️", "Mild": "☀️", "None": "❄️"}
@@ -221,10 +348,11 @@ if st.button("Generate Heatwave Forecast", type="primary"):
 
     # Map emojis
     risk_display["⚠️"] = risk_display["risk_level"].map(emoji_map)
+    risk_display["Escalated"] = risk_display["risk_escalated"].map({True: "⬆️", False: ""})
 
     # Select and rename columns
-    styled = risk_display[["date", "tmax", "risk_level", "⚠️"]]
-    styled.columns = ["Date", "Tmax (°C)", "Risk Level", ""]
+    styled = risk_display[["date", "tmax", "base_risk_level", "risk_level", "Escalated", "⚠️"]]
+    styled.columns = ["Date", "Tmax (°C)", "Base Risk", "Final Risk", "Vulnerability Lift", ""]
 
     # Remove the index before displaying
     styled = styled.reset_index(drop=True)
