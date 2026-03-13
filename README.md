@@ -2,7 +2,7 @@
 
 ![Demo](outputs/forecast_demo.gif)
 
-Open-source pipeline that **fetches weather data, calculates climatological normals, detects heatwaves, scores their risk, and serves everything through an interactive Streamlit dashboard**.
+Open-source pipeline that **fetches weather data, calculates climatological normals, detects heatwaves, scores their risk, estimates probabilistic risk from multiple forecast models, and serves everything through an interactive Streamlit dashboard**.
 Built for researchers, city planners, or anyone who needs timely insight into extreme urban heat events.
 
 ---
@@ -27,11 +27,12 @@ The current public release focuses on **three pilot cities (Athens, Rome, Stockh
 
 ## 🧠 Overview
 
-1. **Fetch climate data** (historical & forecast) from ECMWF/Open-Meteo
+1. **Fetch climate data** (historical & forecast) from Open-Meteo-supported models
 2. **Compute 1991–2020 climate normals** for each location
 3. **Detect heatwaves** using a configurable percentile & run-length algorithm
 4. **Assess risk** with a severity index that blends intensity, duration, and population exposure
-5. **Visualize** risk time-series and event summaries in Streamlit
+5. **Estimate probabilistic risk** from a multi-model forecast ensemble
+6. **Visualize** deterministic + probabilistic risk outputs in Streamlit
 
 ---
 
@@ -93,6 +94,20 @@ python -m urban_heatwave_forecaster.cli assess --city Athens
 streamlit run app.py
 ```
 
+### 6 Enable probabilistic multi-model risk in the UI
+
+In the Streamlit sidebar:
+
+1. Enable **`Enable probabilistic multi-model risk`**
+2. Select one or more models under **`Models for probabilistic risk`**
+3. Click **`Generate Heatwave Forecast`**
+
+The app will show:
+
+* Daily **P(Heatwave)**, **P(High+)**, and **P(Extreme)**
+* A stacked per-day **risk-level probability distribution**
+* A consensus table with most-likely risk, 50%+ consensus risk, and expected risk score
+
 ---
 
 ## ➕ Adding a New City
@@ -123,7 +138,8 @@ python -m urban_heatwave_forecaster.cli fetch --city stockholm
 
 * **Heatwave detection:** 95th-percentile threshold above climatology for ≥ 3 consecutive days (configurable)
 * **Risk index:** weighted sum of Tmax anomaly, event duration, and urban population density (see `risk_model.py`)
-* **Caching:** `@st.cache_data` in Streamlit and on-disk Parquet files keep repeated runs fast
+* **Probabilistic risk (multi-model):** ensemble of Open-Meteo forecast models (`ecmwf_ifs025`, `gfs_seamless`, `icon_seamless`) converted to daily probabilities and consensus categories
+* **Caching:** `@st.cache_data` in Streamlit to keep repeated runs fast
 
 ---
 
