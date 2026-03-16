@@ -140,7 +140,7 @@ def run_pipeline_for_city(city_name: str, lat: float, lon: float):
 
 # --- Paths & logo ---
 ROOT = Path(__file__).resolve().parent
-LOGO_PATH = ROOT / "assets" / "urban-heatwave-forecaster.png"
+LOGO_PATH = ROOT / "assets" / "urban-heatwave-forecaster_new.png"
 
 # If the file path is wrong, this will raise early and be obvious
 logo_img = Image.open(LOGO_PATH)

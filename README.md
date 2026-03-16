@@ -1,4 +1,4 @@
-# <img src="assets/urban-heatwave-forecaster.png" alt="Urban Heatwave Forecaster Logo" width="80"> [Urban Heatwave Impact Forecaster](https://urban-heatwave-forecaster.streamlit.app/) – Real-time Detection & Risk Assessment
+# <img src="assets/urban-heatwave-forecaster_new.png" alt="Urban Heatwave Forecaster Logo" width="80"> [Urban Heatwave Impact Forecaster](https://urban-heatwave-forecaster.streamlit.app/) – Real-time Detection & Risk Assessment
 
 ![Demo](outputs/forecast_demo.gif)
 
