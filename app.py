@@ -283,7 +283,11 @@ if st.button("Generate Heatwave Forecast", type="primary"):
 
     # 1. Fetch forecast
     with st.spinner("Fetching forecast..."):
-        forecast_df = data_fetcher.fetch_ecmwf_forecast(lat, lon, city)
+        try:
+            forecast_df = data_fetcher.fetch_ecmwf_forecast(lat, lon, city)
+        except Exception as exc:
+            st.error(f"Unable to fetch forecast data from Open-Meteo: {exc}")
+            st.stop()
 
     # 2. Heatwave detection
     clim_path = Path(f"data/processed/{city_lower}_climatology_95p.csv")

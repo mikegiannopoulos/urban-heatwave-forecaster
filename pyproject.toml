@@ -17,6 +17,7 @@ dependencies = [
   "rich>=13",
   "streamlit>=1.33",
   "plotly >=5.20",
+  "requests>=2.31",
   "openmeteo-requests>=1.2",
   "requests-cache>=1.2",
   "retry-requests>=2.0",
