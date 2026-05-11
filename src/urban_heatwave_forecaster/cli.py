@@ -1,25 +1,28 @@
-from pathlib import Path
+from __future__ import annotations
 
 import pandas as pd
 import typer
 
-app = typer.Typer(help="Urban Heatwave Forecaster CLI")
+from climate_extremes.core.cities import (
+    get_city_coordinates,
+    list_supported_cities,
+    normalize_city_name,
+)
+from climate_extremes.core.paths import PROCESSED_DATA_DIR, RAW_DATA_DIR
+from climate_extremes.io.openmeteo import fetch_ecmwf_forecast
+from climate_extremes.modules.heat.detection import detect_heatwaves
+from climate_extremes.modules.heat.risk import assess_heatwave_risk
 
-COORDS = {
-    "athens": (37.9838, 23.7278),
-    "rome": (41.8919, 12.5113),
-    "stockholm": (59.3294, 18.0687),
-    "london": (51.5085, -0.1257),
-}
+app = typer.Typer(help="Urban Heatwave Forecaster CLI (legacy entry point)")
 
 
 def _normalize_city(city: str) -> str:
-    city_key = city.strip().lower()
-    if city_key not in COORDS:
-        supported = ", ".join(sorted(name.title() for name in COORDS))
+    try:
+        return normalize_city_name(city)
+    except KeyError:
+        supported = ", ".join(list_supported_cities())
         typer.echo(f"Unknown city: {city}. Supported cities: {supported}")
-        raise typer.Exit(code=1)
-    return city_key
+        raise typer.Exit(code=1) from None
 
 
 @app.command()
@@ -27,11 +30,9 @@ def fetch(
     city: str = typer.Option(..., "--city", "-c", help="City name, e.g. Athens.")
 ):
     """Fetch forecast for CITY."""
-    from . import data_fetcher
-
     city_key = _normalize_city(city)
-    lat, lon = COORDS[city_key]
-    data_fetcher.fetch_ecmwf_forecast(lat, lon, city_key)
+    lat, lon = get_city_coordinates(city_key)
+    fetch_ecmwf_forecast(lat, lon, city_key)
 
 
 @app.command()
@@ -40,19 +41,18 @@ def detect(
     min_run: int = 3,
 ):
     """Detect heatwaves in CITY."""
-    from . import detect_heatwaves
-
     city_key = _normalize_city(city)
-    forecast_path = Path(f"data/raw/{city_key}_forecast.csv")
-    climatology_path = Path(f"data/processed/{city_key}_climatology_95p.csv")
+    forecast_path = RAW_DATA_DIR / f"{city_key}_forecast.csv"
+    climatology_path = PROCESSED_DATA_DIR / f"{city_key}_climatology_95p.csv"
 
-    df = detect_heatwaves.detect_heatwaves(
+    df = detect_heatwaves(
         forecast_path=forecast_path,
         climatology_path=climatology_path,
         min_run=min_run,
     )
 
-    output_path = Path(f"data/processed/{city_key}_forecast_with_heatwaves.csv")
+    output_path = PROCESSED_DATA_DIR / f"{city_key}_forecast_with_heatwaves.csv"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(output_path, index=False)
     typer.echo(f"Saved: {output_path}")
 
@@ -62,12 +62,10 @@ def assess(
     city: str = typer.Option(..., "--city", "-c", help="City name, e.g. Athens.")
 ):
     """Assess risk based on detected heatwaves."""
-    from . import risk_model
-
     city_key = _normalize_city(city)
-    vuln_path = Path("data/raw/urban_vulnerability.csv")
-    forecast_path = Path(f"data/processed/{city_key}_forecast_with_heatwaves.csv")
-    output_path = Path(f"data/processed/{city_key}_heatwave_risk.csv")
+    vuln_path = RAW_DATA_DIR / "urban_vulnerability.csv"
+    forecast_path = PROCESSED_DATA_DIR / f"{city_key}_forecast_with_heatwaves.csv"
+    output_path = PROCESSED_DATA_DIR / f"{city_key}_heatwave_risk.csv"
 
     if not vuln_path.exists() or not forecast_path.exists():
         typer.echo("Missing required input files.")
@@ -85,7 +83,7 @@ def assess(
                 "Run heatwave detection first."
             )
 
-    df_risk = risk_model.assess_heatwave_risk(df_forecast, vulnerability_df)
+    df_risk = assess_heatwave_risk(df_forecast, vulnerability_df)
     df_risk.to_csv(output_path, index=False)
     typer.echo(f"Saved: {output_path}")
 

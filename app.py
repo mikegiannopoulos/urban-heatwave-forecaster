@@ -13,6 +13,14 @@ if SRC_PATH not in sys.path:
     sys.path.insert(0, SRC_PATH)
 
 from urban_heatwave_forecaster import data_fetcher, detect_heatwaves, risk_model
+from climate_extremes.core.summary import summarize_hazards
+from climate_extremes.io.openmeteo import fetch_precipitation_forecast
+from climate_extremes.modules.precipitation import (
+    WET_SPELL_3DAY_95P,
+    assess_precipitation_risk,
+    build_precipitation_assessment_from_frame,
+    detect_precipitation_events_df,
+)
 
 RISK_ORDER = ["None", "Mild", "Moderate", "High", "Extreme"]
 RISK_TO_SCORE = {risk: score for score, risk in enumerate(RISK_ORDER)}
@@ -29,6 +37,14 @@ MODEL_OPTIONS = {
     "ICON Seamless": "icon_seamless",
 }
 MODEL_LABEL_BY_CODE = {code: label for label, code in MODEL_OPTIONS.items()}
+SHARED_CLASS_COLORS = {
+    "none": "#9db4a2",
+    "low": "#d9e78f",
+    "moderate": "#f7c66f",
+    "high": "#f08a5d",
+    "severe": "#d95763",
+    "extreme": "#9c2f4f",
+}
 
 
 def base_risk_from_tmax(temp: float) -> str:
@@ -51,6 +67,29 @@ def enrich_risk_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     out["adjusted_risk_score"] = out["risk_level"].map(RISK_TO_SCORE)
     out["risk_escalated"] = out["adjusted_risk_score"] > out["base_risk_score"]
     return out
+
+
+def format_shared_class(label: str) -> str:
+    return str(label).replace("_", " ").title()
+
+
+def run_precipitation_pipeline_for_city(city_name: str, lat: float, lon: float):
+    city_lower = city_name.lower()
+    forecast_df = fetch_precipitation_forecast(lat, lon, city_name)
+    clim_path = Path(f"data/processed/{city_lower}_precipitation_climatology.csv")
+    if not clim_path.exists():
+        raise FileNotFoundError(f"Missing precipitation climatology: {clim_path}")
+
+    forecast_df["date"] = pd.to_datetime(forecast_df["date"])
+    clim_df = pd.read_csv(clim_path)
+    detected_df = detect_precipitation_events_df(
+        forecast_df=forecast_df,
+        climatology_df=clim_df,
+        definition=WET_SPELL_3DAY_95P,
+    )
+    risk_df = assess_precipitation_risk(detected_df.copy(), WET_SPELL_3DAY_95P)
+    assessment = build_precipitation_assessment_from_frame(risk_df, WET_SPELL_3DAY_95P)
+    return detected_df, risk_df, assessment
 
 
 def fetch_multi_model_forecast_compat(
@@ -180,7 +219,7 @@ st.markdown("""
 with st.expander("🔍 How This Works"):
     st.markdown("""
     **Overview**  
-    This tool forecasts potential heatwave risk by combining short-term temperature forecasts with long-term climate norms and urban vulnerability data.
+    This tool forecasts climate extremes by combining short-term weather forecasts with long-term climate norms. The current app supports a full **heat** workflow and a calibrated **heavy precipitation** module.
 
     **Heatwave Detection**  
     According to the European State of the Climate (ESOTC), a [heatwave](https://climate.copernicus.eu/heatwaves-brief-introduction) happens when for at least three days in a row, both the daytime highs and nighttime lows are hotter than what’s normal for that time of year. Specifically, hotter than 95% of past temperatures recorded between 1991 and 2020.
@@ -229,10 +268,10 @@ with st.expander("📦 How the Data Flows"):
    Merges in city-level data: elderly %, density, green space.
 
 6. **🧮 Risk Scoring**  
-   Assigns a heatwave risk level for each day using temperature + vulnerability.
+   Assigns hazard-specific severity and then harmonizes outputs into a shared multi-hazard summary.
 
 7. **📈 Final Output**  
-   Risk table + interactive chart reflect all the above in real time.
+   Heat details, precipitation details, and a combined climate-extremes summary reflect all the above in real time.
         """)
 
 # --- Sidebar: City selection ---
@@ -247,6 +286,11 @@ run_probabilistic_risk = st.sidebar.checkbox(
     "Enable probabilistic multi-model risk",
     value=True,
     help="Combines multiple weather models and shows risk probabilities."
+)
+include_precipitation_module = st.sidebar.checkbox(
+    "Include heavy precipitation module",
+    value=True,
+    help="Runs the calibrated 3-day wet-spell precipitation module alongside heat.",
 )
 prob_model_labels = st.sidebar.multiselect(
     "Models for probabilistic risk",
@@ -266,9 +310,9 @@ latlon = {
 lat, lon = latlon[city]
 
 # --- Button to Generate Forecast ---
-st.title(f"Heatwave Risk Assessment – {city}")
+st.title(f"Climate Extremes Assessment – {city}")
 
-if st.button("Generate Heatwave Forecast", type="primary"):
+if st.button("Generate Climate Extremes Forecast", type="primary"):
         
     # Create a placeholder for the gear
     gear_placeholder = st.empty()
@@ -303,6 +347,41 @@ if st.button("Generate Heatwave Forecast", type="primary"):
     vulnerability_df = pd.read_csv("data/raw/urban_vulnerability.csv")
     risk_df = risk_model.assess_heatwave_risk(detected_df, vulnerability_df)
     risk_df = enrich_risk_dataframe(risk_df)
+
+    precipitation_detected_df = None
+    precipitation_risk_df = None
+    precipitation_assessment = None
+    precipitation_error = None
+    if include_precipitation_module:
+        with st.spinner("Running precipitation module..."):
+            try:
+                (
+                    precipitation_detected_df,
+                    precipitation_risk_df,
+                    precipitation_assessment,
+                ) = run_precipitation_pipeline_for_city(city, lat, lon)
+            except Exception as exc:
+                precipitation_error = str(exc)
+
+    heat_assessment_payload = {
+        "hazard": "heat",
+        "event_detected": bool(detected_df["heatwave_id"].notna().any()),
+        "severity_score": float(risk_df["adjusted_risk_score"].max() * 25),
+        "severity_class": risk_df.loc[
+            risk_df["adjusted_risk_score"].idxmax(), "risk_level"
+        ].lower() if not risk_df.empty else "none",
+        "confidence": "medium",
+        "key_metrics": {
+            "heatwave_days": int(detected_df["heatwave_id"].notna().sum()),
+            "peak_tmax_c": round(float(detected_df["tmax"].max()), 1),
+            "peak_tmax_anomaly_c": round(float((detected_df["tmax"] - detected_df["tmax_95p"]).max()), 1),
+        },
+        "metadata": {"module": "heat"},
+    }
+    assessments = [heat_assessment_payload]
+    if precipitation_assessment is not None:
+        assessments.append(precipitation_assessment)
+    multi_hazard_summary = summarize_hazards(assessments)
     
     # --- Summary Metrics ---
     heatwave_days = detected_df["heatwave_id"].notna().sum()
@@ -313,6 +392,15 @@ if st.button("Generate Heatwave Forecast", type="primary"):
         st.success(f"**Heatwave detected!** {heatwave_days} heatwave day(s) forecasted for {city}.")
     else:
         st.info(f"No heatwave forecasted for {city} in the next 7 days.")
+    if precipitation_error:
+        st.warning(f"Precipitation module unavailable for this run: {precipitation_error}")
+    elif precipitation_assessment is not None:
+        if precipitation_assessment.event_detected:
+            st.info(
+                f"Heavy precipitation signal detected using `{WET_SPELL_3DAY_95P.name}`."
+            )
+        else:
+            st.info("No heavy precipitation signal detected in the next 7 days.")
 
     fig_df = detected_df.copy()
     fig_df["date"] = pd.to_datetime(fig_df["date"])
@@ -337,6 +425,30 @@ if st.button("Generate Heatwave Forecast", type="primary"):
     c2.metric("Green Cover", f"{city_vuln['green_cover_percent']:.1f}%")
     c3.metric("Density", f"{int(city_vuln['density_per_km2']):,}/km²")
     c4.metric("Risk Escalation Days", escalated_days)
+
+    st.subheader("🌐 Multi-Hazard Summary")
+    primary_hazard = multi_hazard_summary["primary_hazard"] or "None"
+    mh1, mh2, mh3, mh4 = st.columns(4)
+    mh1.metric("Overall Status", multi_hazard_summary["overall_status"].title())
+    mh2.metric("Summary Class", format_shared_class(multi_hazard_summary["summary_class"]))
+    mh3.metric("Primary Hazard", format_shared_class(primary_hazard))
+    mh4.metric("Active Hazards", int(multi_hazard_summary["hazard_count"]))
+
+    module_cards = st.columns(max(len(multi_hazard_summary["module_summaries"]), 1))
+    for idx, module_summary in enumerate(multi_hazard_summary["module_summaries"]):
+        with module_cards[idx]:
+            hazard_name = format_shared_class(module_summary["hazard"])
+            st.markdown(f"**{hazard_name}**")
+            badge_color = SHARED_CLASS_COLORS.get(module_summary["severity_class"], "#cccccc")
+            st.markdown(
+                f"<div style='padding:0.5rem 0.75rem;border-radius:0.75rem;background:{badge_color};color:white;font-weight:600;margin-bottom:0.5rem;'>{format_shared_class(module_summary['severity_class'])}</div>",
+                unsafe_allow_html=True,
+            )
+            st.caption(
+                f"Detected: {'Yes' if module_summary['event_detected'] else 'No'} | Score: {module_summary['severity_score']:.1f}"
+            )
+            for metric_key, metric_value in list(module_summary.get("key_metrics", {}).items())[:3]:
+                st.write(f"{metric_key.replace('_', ' ').title()}: {metric_value}")
 
     # --- Plotly Chart 1: Forecast vs Climatology ---
     st.subheader("📈 Forecast vs Climatology Thresholds")
@@ -485,6 +597,85 @@ if st.button("Generate Heatwave Forecast", type="primary"):
 
     st.subheader("📋 Heatwave Risk Table")
     st.dataframe(styled)
+
+    if precipitation_assessment is not None and precipitation_risk_df is not None:
+        st.subheader("🌧️ Heavy Precipitation Summary")
+        precip_metric_1, precip_metric_2, precip_metric_3, precip_metric_4 = st.columns(4)
+        precip_metric_1.metric(
+            "Definition",
+            WET_SPELL_3DAY_95P.name,
+        )
+        precip_metric_2.metric(
+            "Severity Class",
+            format_shared_class(precipitation_assessment.severity_class),
+        )
+        precip_metric_3.metric(
+            "Peak 3-Day Total",
+            f"{precipitation_assessment.key_metrics['peak_accumulation_mm']:.1f} mm",
+        )
+        precip_metric_4.metric(
+            "Peak Exceedance Ratio",
+            f"{precipitation_assessment.key_metrics['peak_exceedance_ratio']:.2f}",
+        )
+
+        precip_plot_df = precipitation_risk_df.copy()
+        precip_plot_df["date"] = pd.to_datetime(precip_plot_df["date"])
+        precip_fig = go.Figure()
+        precip_fig.add_trace(
+            go.Bar(
+                x=precip_plot_df["date"],
+                y=precip_plot_df["precipitation_sum"],
+                name="Daily precipitation (mm)",
+                marker_color="#5aa9e6",
+            )
+        )
+        precip_fig.add_trace(
+            go.Scatter(
+                x=precip_plot_df["date"],
+                y=precip_plot_df["precip_accumulation_mm"],
+                mode="lines+markers",
+                name="3-day accumulation (mm)",
+                line=dict(color="#1b4965", width=3),
+            )
+        )
+        precip_fig.add_trace(
+            go.Scatter(
+                x=precip_plot_df["date"],
+                y=precip_plot_df["threshold_mm"],
+                mode="lines",
+                name="3-day threshold (mm)",
+                line=dict(color="#d1495b", width=2, dash="dash"),
+            )
+        )
+        precip_fig.update_layout(
+            title="Heavy Precipitation Module: Daily Totals vs 3-Day Threshold",
+            xaxis_title="Date",
+            yaxis_title="Precipitation (mm)",
+            margin=dict(l=40, r=20, t=50, b=40),
+            legend=dict(title=""),
+        )
+        st.plotly_chart(precip_fig, use_container_width=True)
+
+        precip_display = precip_plot_df[
+            [
+                "date",
+                "precipitation_sum",
+                "precip_accumulation_mm",
+                "threshold_mm",
+                "exceeds_threshold",
+                "risk_level",
+            ]
+        ].copy()
+        precip_display["date"] = precip_display["date"].dt.strftime("%a, %b %d")
+        precip_display.columns = [
+            "Date",
+            "Daily Rain (mm)",
+            "3-Day Total (mm)",
+            "Threshold (mm)",
+            "Event Flag",
+            "Severity Class",
+        ]
+        st.dataframe(precip_display, use_container_width=True, hide_index=True)
 
     if run_probabilistic_risk:
         st.subheader("🎲 Probabilistic Multi-Model Risk")
@@ -706,7 +897,7 @@ if st.button("Generate Heatwave Forecast", type="primary"):
     if run_multi_city_comparison:
         st.subheader("🌍 4-City Comparison")
         st.caption(
-            "Comparing Athens, Rome, Stockholm, and London using the same pipeline and risk rules."
+            "Comparing Athens, Rome, Stockholm, and London using the same heat pipeline and risk rules."
         )
 
         with st.spinner("Building multi-city comparison..."):

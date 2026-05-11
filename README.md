@@ -1,86 +1,96 @@
-# <img src="assets/urban-heatwave-forecaster_new.png" alt="Urban Heatwave Forecaster Logo" width="80"> [Urban Heatwave Impact Forecaster](https://urban-heatwave-forecaster.streamlit.app/) – Real-time Detection & Risk Assessment
+# <img src="assets/urban-heatwave-forecaster_new.png" alt="Urban Heatwave Forecaster Logo" width="80"> Climate Extremes Platform
 
-![Demo](outputs/forecast_demo_new.gif)
+This repository is evolving from a single-purpose urban heatwave pipeline into a **modular platform for detecting and assessing climate extremes**.
 
-Open-source pipeline that **fetches weather data, calculates climatological normals, detects heatwaves, scores their risk, estimates probabilistic risk from multiple forecast models, and serves everything through an interactive Streamlit dashboard**.
-Built for researchers, city planners, or anyone who needs timely insight into extreme urban heat events.
+Today, the fully implemented module is **heat**. The new package structure, shared contracts, and summary layer are in place so that **heavy precipitation extremes** and later **drought** can be added without bending the codebase back around heat-only assumptions.
 
----
+The existing Streamlit app and the `urban_heatwave_forecaster` package are still supported as a compatibility layer while the broader platform architecture takes shape.
 
-## 🌐 Scalability & Design Philosophy
+## Current Status
 
-This project serves as a **foundational pipeline** for operational urban heatwave analysis. Its architecture is intentionally designed for scalability and reproducibility:
+- `heat` is the working module end to end: forecast fetch, climatology baseline, heatwave detection, risk assessment, and UI.
+- `climate_extremes` is the new platform package with shared schemas, utilities, and CLI entry points.
+- `urban_heatwave_forecaster` remains available so existing imports and commands do not break mid-refactor.
+- `precipitation` now has a first testing implementation with candidate definitions that can be compared side by side.
 
-* **Spatial Scaling**: Add any city or coordinate pair via a simple YAML entry—no code changes required
-* **Temporal Scaling**: Ingests decades of historical data and refreshes daily forecasts, using sliding-window processing to keep memory use constant
-* **Variable Expansion**: Plug-in fetchers allow humidity, wind, or air-quality metrics to be integrated without touching the detection core
-* **Deployment Flexibility**: The same codebase runs as a CLI, a scheduled cron job, or a live Streamlit Cloud app
-* **Reproducible Workflows**: Pinned dependencies, deterministic algorithms, and automated tests guarantee consistent results across environments
+## Design Principles
 
-The current public release focuses on **three pilot cities (Athens, Rome, Stockholm)** to:
+- Keep hazard science module-specific.
+- Standardize interfaces, not the raw physics.
+- Reuse generic plumbing for data access, climatologies, run detection, and summaries.
+- Prefer separate hazard scores plus a shared summary layer over a premature single total-risk number.
 
-1. Showcase end-to-end functionality clearly
-2. Keep the initial repository lightweight for reviewers and CI pipelines
-3. Provide a template that users can replicate globally with minimal configuration
+## Project Structure
 
----
-
-## 🧠 Overview
-
-1. **Fetch climate data** (historical & forecast) from Open-Meteo-supported models
-2. **Compute 1991–2020 climate normals** for each location
-3. **Detect heatwaves** using a configurable percentile & run-length algorithm
-4. **Assess risk** with a severity index that blends intensity, duration, and population exposure
-5. **Estimate probabilistic risk** from a multi-model forecast ensemble
-6. **Visualize** deterministic + probabilistic risk outputs in Streamlit
-
----
-
-## 📂 Project Structure
-
-```
+```text
 urban-heatwave-forecaster/
-├── src/urban_heatwave_forecaster/   # Core Python package
-│   ├── data_fetcher.py              # Historical & forecast retrieval
-│   ├── climate_normals.py           # Baseline climatology
-│   ├── detect_heatwaves.py          # Event detection logic
-│   ├── risk_model.py                # Severity scoring
-│   └── __init__.py
-├── app.py                           # Streamlit front-end
-├── data/                            # Raw & interim data (git-ignored)
-├── outputs/                         # Results & figures (git-ignored)
-├── requirements.txt                 # Runtime deps for Streamlit Cloud
-├── pyproject.toml                   # Package & pinned deps
-├── LICENSE                          # AGPL-3.0 license text
-├── .gitignore
+├── src/
+│   ├── climate_extremes/
+│   │   ├── baselines/              # Generic climatology builders
+│   │   ├── core/                   # Shared schemas, scales, city registry, summaries
+│   │   ├── io/                     # Data access adapters
+│   │   ├── modules/
+│   │   │   ├── heat/               # Implemented heat module
+│   │   │   └── precipitation/      # Candidate precipitation definitions, baselines, detection, comparison
+│   │   └── cli.py                  # New platform CLI
+│   └── urban_heatwave_forecaster/  # Legacy compatibility layer
+├── app.py                          # Streamlit heat module app
+├── tests/                          # Unit tests for shared utilities and heat module
+├── requirements.txt
+├── pyproject.toml
 └── README.md
 ```
 
----
+## Shared Module Contract
 
-## 🚀 Getting Started
+Each hazard module should be able to emit a summary with the same top-level schema:
 
-### 1 Clone the repo
-
-```bash
-git clone https://github.com/mikegiannopoulos/urban-heatwave-forecaster.git
-cd urban-heatwave-forecaster
+```json
+{
+  "hazard": "heat",
+  "event_detected": true,
+  "severity_score": 78,
+  "severity_class": "severe",
+  "confidence": "medium",
+  "key_metrics": {
+    "duration_days": 4,
+    "threshold_exceedance": 2.3
+  },
+  "metadata": {
+    "legacy_risk_level": "Extreme"
+  }
+}
 ```
 
-### 2 Create & activate a virtual environment
+These summaries can then be combined by the shared multi-hazard summary layer without forcing all hazards into one raw scoring formula.
+
+## Quick Start
+
+### 1. Create and activate a virtual environment
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate    # Windows: .venv\Scripts\activate
+source .venv/bin/activate
 ```
 
-### 3 Install the package
+### 2. Install the package
 
 ```bash
 pip install -e .
 ```
 
-### 4 Run a quick test
+### 3. Run the heat module with the new platform CLI
+
+```bash
+python -m climate_extremes.cli fetch-historical --city Athens
+python -m climate_extremes.cli build-baseline --city Athens
+python -m climate_extremes.cli heat fetch --city Athens
+python -m climate_extremes.cli heat detect --city Athens
+python -m climate_extremes.cli heat assess --city Athens
+python -m climate_extremes.cli heat summarize --city Athens
+```
+
+### 4. Legacy commands still work
 
 ```bash
 python -m urban_heatwave_forecaster.cli fetch --city Athens
@@ -88,78 +98,48 @@ python -m urban_heatwave_forecaster.cli detect --city Athens
 python -m urban_heatwave_forecaster.cli assess --city Athens
 ```
 
-### 5 Launch the dashboard
+### 5. Test precipitation candidate definitions
+
+```bash
+python -m climate_extremes.cli precipitation fetch-historical --city Athens
+python -m climate_extremes.cli precipitation build-baseline --city Athens
+python -m climate_extremes.cli precipitation fetch --city Athens
+python -m climate_extremes.cli precipitation compare --city Athens
+```
+
+This compares the current candidate definitions:
+
+- `daily-burst-95p`
+- `daily-burst-99p`
+- `wet-spell-3day-95p`
+
+### 6. Launch the current heat-focused dashboard
 
 ```bash
 streamlit run app.py
 ```
 
-### 6 Enable probabilistic multi-model risk in the UI
+## Multi-Hazard Combination Strategy
 
-In the Streamlit sidebar:
+The platform is designed around a layered combination model:
 
-1. Enable **`Enable probabilistic multi-model risk`**
-2. Select one or more models under **`Models for probabilistic risk`**
-3. Click **`Generate Heatwave Forecast`**
+1. Each module computes its own hazard-specific severity.
+2. Each module maps into a shared categorical language such as `none`, `moderate`, `high`, or `extreme`.
+3. The platform summary identifies the primary hazard, active hazards, hazard count, and overall multi-hazard status.
+4. A single total-risk score is intentionally deferred until more modules exist and the aggregation can be defended scientifically.
 
-The app will show:
+## Roadmap
 
-* Daily **P(Heatwave)**, **P(High+)**, and **P(Extreme)**
-* A stacked per-day **risk-level probability distribution**
-* A consensus table with most-likely risk, 50%+ consensus risk, and expected risk score
+- Evaluate precipitation definition behavior on real-city forecast and historical baselines, then promote the best-performing candidate to the default workflow
+- Add compound-event logic for overlapping hazards
+- Generalize the Streamlit UI from heat-only views to a module switcher
+- Expand baseline builders for additional variables and hazard-specific thresholds
 
----
-
-## ➕ Adding a New City
-
-To analyze a new location, add its name and coordinates to a config file like `config/cities.yaml` (or wherever your project expects them), e.g.:
-
-```yaml
-athens:
-  lat: 37.9838
-  lon: 23.7275
-rome:
-  lat: 41.9028
-  lon: 12.4964
-stockholm:
-  lat: 59.3293
-  lon: 18.0686
-```
-
-Then run the pipeline:
-
-```bash
-python -m urban_heatwave_forecaster.cli fetch --city stockholm
-```
-
----
-
-## 🛠 Algorithms & Models
-
-* **Heatwave detection:** 95th-percentile threshold above climatology for ≥ 3 consecutive days (configurable)
-* **Risk index:** weighted sum of Tmax anomaly, event duration, and urban population density (see `risk_model.py`)
-* **Probabilistic risk (multi-model):** ensemble of Open-Meteo forecast models (`ecmwf_ifs025`, `gfs_seamless`, `icon_seamless`) converted to daily probabilities and consensus categories
-* **Caching:** `@st.cache_data` in Streamlit to keep repeated runs fast
-
----
-
-
-## 📜 License
+## License
 
 GNU Affero General Public License v3.0 (AGPL-3.0) © 2025 Michael Giannopoulos & Contributors
-This project is licensed under AGPL-3.0. See `LICENSE` for the full text and conditions.
-
-
----
 
 ## Acknowledgments
 
-* **Forecast**: [ECMWF IFS 0.25° model via Open-Meteo](https://open-meteo.com/)
-* **Historical Normals**: [ECMWF IFS model 1991–2020 reanalysis](https://open-meteo.com/en/docs/historical-weather-api)
-* **Population & Green Space Data**: [Urban Dataset – Husqvarna HUGSI](https://hugsi.green/cities/index)
-
----
-
-## Author
-
-*Created and maintained by Michael Giannopoulos — climate scientist|data analyst.*
+- Forecasts and archives: [Open-Meteo](https://open-meteo.com/)
+- Urban vulnerability context: [HUGSI](https://hugsi.green/cities/index)
