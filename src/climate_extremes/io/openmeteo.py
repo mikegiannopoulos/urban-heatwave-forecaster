@@ -10,6 +10,7 @@ import requests
 import requests_cache
 from retry_requests import retry
 
+from climate_extremes.core.locations import Location, location_slug
 from climate_extremes.core.paths import CACHE_DIR, RAW_DATA_DIR
 
 DEFAULT_MULTI_MODELS = ("ecmwf_ifs025", "gfs_seamless", "icon_seamless")
@@ -84,6 +85,70 @@ def _fetch_forecast_payload(url: str, params: dict, model: str) -> dict:
     return payload
 
 
+def _forecast_temperature_params(
+    lat: float,
+    lon: float,
+    model: str,
+    forecast_days: int,
+    timezone: str | None = None,
+) -> dict:
+    return {
+        "latitude": lat,
+        "longitude": lon,
+        "hourly": "temperature_2m",
+        "models": model,
+        "forecast_days": forecast_days,
+        "timezone": timezone or "auto",
+    }
+
+
+def _historical_temperature_params(
+    lat: float,
+    lon: float,
+    timezone: str | None = None,
+) -> dict:
+    return {
+        "latitude": lat,
+        "longitude": lon,
+        "start_date": "1991-01-01",
+        "end_date": "2020-12-31",
+        "daily": ["temperature_2m_min", "temperature_2m_max"],
+        "timezone": timezone or "auto",
+    }
+
+
+def _precipitation_forecast_params(
+    lat: float,
+    lon: float,
+    model: str,
+    forecast_days: int,
+    timezone: str | None = None,
+) -> dict:
+    return {
+        "latitude": lat,
+        "longitude": lon,
+        "daily": "precipitation_sum",
+        "models": model,
+        "forecast_days": forecast_days,
+        "timezone": timezone or "auto",
+    }
+
+
+def _historical_precipitation_params(
+    lat: float,
+    lon: float,
+    timezone: str | None = None,
+) -> dict:
+    return {
+        "latitude": lat,
+        "longitude": lon,
+        "start_date": "1991-01-01",
+        "end_date": "2020-12-31",
+        "daily": ["precipitation_sum"],
+        "timezone": timezone or "auto",
+    }
+
+
 def _daily_value_dataframe(
     times,
     values,
@@ -121,16 +186,16 @@ def fetch_forecast_for_model(
     forecast_days: int = 7,
     save_path: str | Path | None = None,
     include_model_col: bool = True,
+    timezone: str | None = None,
 ) -> pd.DataFrame:
     url = "https://api.open-meteo.com/v1/forecast"
-    params = {
-        "latitude": lat,
-        "longitude": lon,
-        "hourly": "temperature_2m",
-        "models": model,
-        "forecast_days": forecast_days,
-        "timezone": "auto",
-    }
+    params = _forecast_temperature_params(
+        lat=lat,
+        lon=lon,
+        model=model,
+        forecast_days=forecast_days,
+        timezone=timezone,
+    )
     payload = _fetch_forecast_payload(url, params, model=model)
     hourly = payload["hourly"]
     if "time" not in hourly or "temperature_2m" not in hourly:
@@ -162,6 +227,7 @@ def fetch_ecmwf_forecast(
     lon: float,
     city_name: str,
     save_path: str | Path | None = None,
+    timezone: str | None = None,
 ) -> pd.DataFrame:
     if save_path is None:
         save_path = RAW_DATA_DIR / f"{city_name.lower()}_forecast.csv"
@@ -173,6 +239,23 @@ def fetch_ecmwf_forecast(
         forecast_days=7,
         save_path=save_path,
         include_model_col=False,
+        timezone=timezone,
+    )
+
+
+def fetch_ecmwf_forecast_for_location(
+    location: Location,
+    save_path: str | Path | None = None,
+    output_label: str | None = None,
+) -> pd.DataFrame:
+    """Fetch ECMWF temperature forecast for a Location."""
+    label = output_label or location_slug(location)
+    return fetch_ecmwf_forecast(
+        lat=location.latitude,
+        lon=location.longitude,
+        city_name=label,
+        save_path=save_path,
+        timezone=location.timezone,
     )
 
 
@@ -182,6 +265,7 @@ def fetch_multi_model_forecast(
     city_name: str,
     models: list[str] | tuple[str, ...] | None = None,
     forecast_days: int = 7,
+    timezone: str | None = None,
 ) -> tuple[pd.DataFrame, list[dict[str, str]]]:
     requested_models = list(models or DEFAULT_MULTI_MODELS)
     requested_models = list(dict.fromkeys(requested_models))
@@ -199,6 +283,7 @@ def fetch_multi_model_forecast(
                 forecast_days=forecast_days,
                 save_path=RAW_DATA_DIR / f"{city_name.lower()}_{model}_forecast.csv",
                 include_model_col=True,
+                timezone=timezone,
             )
             frames.append(df_model)
         except Exception as exc:
@@ -219,6 +304,7 @@ def fetch_historical_temperature_data(
     lon: float,
     city: str,
     save_path: str | Path | None = None,
+    timezone: str | None = None,
 ) -> pd.DataFrame:
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     client = openmeteo_requests.Client(
@@ -232,14 +318,11 @@ def fetch_historical_temperature_data(
     )
 
     url = "https://archive-api.open-meteo.com/v1/archive"
-    params = {
-        "latitude": lat,
-        "longitude": lon,
-        "start_date": "1991-01-01",
-        "end_date": "2020-12-31",
-        "daily": ["temperature_2m_min", "temperature_2m_max"],
-        "timezone": "auto",
-    }
+    params = _historical_temperature_params(
+        lat=lat,
+        lon=lon,
+        timezone=timezone,
+    )
 
     response = client.weather_api(url, params=params)[0]
     daily = response.Daily()
@@ -272,6 +355,22 @@ def fetch_historical_temperature_data(
     return df
 
 
+def fetch_historical_temperature_data_for_location(
+    location: Location,
+    save_path: str | Path | None = None,
+    output_label: str | None = None,
+) -> pd.DataFrame:
+    """Fetch historical temperature archive for a Location."""
+    label = output_label or location_slug(location)
+    return fetch_historical_temperature_data(
+        lat=location.latitude,
+        lon=location.longitude,
+        city=label,
+        save_path=save_path,
+        timezone=location.timezone,
+    )
+
+
 def fetch_precipitation_forecast(
     lat: float,
     lon: float,
@@ -280,16 +379,16 @@ def fetch_precipitation_forecast(
     forecast_days: int = 7,
     save_path: str | Path | None = None,
     include_model_col: bool = False,
+    timezone: str | None = None,
 ) -> pd.DataFrame:
     url = "https://api.open-meteo.com/v1/forecast"
-    params = {
-        "latitude": lat,
-        "longitude": lon,
-        "daily": "precipitation_sum",
-        "models": model,
-        "forecast_days": forecast_days,
-        "timezone": "auto",
-    }
+    params = _precipitation_forecast_params(
+        lat=lat,
+        lon=lon,
+        model=model,
+        forecast_days=forecast_days,
+        timezone=timezone,
+    )
     payload = _fetch_forecast_payload(url, params, model=model)
     daily = payload.get("daily") or {}
     if "time" not in daily or "precipitation_sum" not in daily:
@@ -318,11 +417,33 @@ def fetch_precipitation_forecast(
     return df_daily
 
 
+def fetch_precipitation_forecast_for_location(
+    location: Location,
+    save_path: str | Path | None = None,
+    output_label: str | None = None,
+    model: str = "ecmwf_ifs025",
+    forecast_days: int = 7,
+) -> pd.DataFrame:
+    """Fetch precipitation forecast for a Location."""
+    label = output_label or location_slug(location)
+    return fetch_precipitation_forecast(
+        lat=location.latitude,
+        lon=location.longitude,
+        city_name=label,
+        model=model,
+        forecast_days=forecast_days,
+        save_path=save_path,
+        include_model_col=False,
+        timezone=location.timezone,
+    )
+
+
 def fetch_historical_precipitation_data(
     lat: float,
     lon: float,
     city: str,
     save_path: str | Path | None = None,
+    timezone: str | None = None,
 ) -> pd.DataFrame:
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     client = openmeteo_requests.Client(
@@ -336,14 +457,11 @@ def fetch_historical_precipitation_data(
     )
 
     url = "https://archive-api.open-meteo.com/v1/archive"
-    params = {
-        "latitude": lat,
-        "longitude": lon,
-        "start_date": "1991-01-01",
-        "end_date": "2020-12-31",
-        "daily": ["precipitation_sum"],
-        "timezone": "auto",
-    }
+    params = _historical_precipitation_params(
+        lat=lat,
+        lon=lon,
+        timezone=timezone,
+    )
 
     response = client.weather_api(url, params=params)[0]
     daily = response.Daily()
@@ -377,3 +495,19 @@ def fetch_historical_precipitation_data(
     df.to_csv(save_path, index=False)
     print(f"Saved {len(df):,} precipitation rows to {save_path}")
     return df
+
+
+def fetch_historical_precipitation_data_for_location(
+    location: Location,
+    save_path: str | Path | None = None,
+    output_label: str | None = None,
+) -> pd.DataFrame:
+    """Fetch historical precipitation archive for a Location."""
+    label = output_label or location_slug(location)
+    return fetch_historical_precipitation_data(
+        lat=location.latitude,
+        lon=location.longitude,
+        city=label,
+        save_path=save_path,
+        timezone=location.timezone,
+    )
