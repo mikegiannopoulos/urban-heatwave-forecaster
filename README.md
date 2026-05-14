@@ -90,6 +90,12 @@ python -m climate_extremes.cli heat assess --city Athens
 python -m climate_extremes.cli heat summarize --city Athens
 ```
 
+Location search is available as backend groundwork for future global-city workflows:
+
+```bash
+python -m climate_extremes.cli search-location "Gothenburg"
+```
+
 ### 4. Legacy commands still work
 
 ```bash
