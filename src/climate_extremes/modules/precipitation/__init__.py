@@ -26,6 +26,14 @@ from climate_extremes.modules.precipitation.risk import (
     build_precipitation_assessment_from_frame,
     compare_precipitation_definitions,
 )
+from climate_extremes.modules.precipitation.workflow import (
+    PrecipitationOutputPaths,
+    precipitation_definition_slug,
+    precipitation_output_label,
+    precipitation_output_paths,
+    run_precipitation_for_location,
+    run_precipitation_for_location_result,
+)
 
 __all__ = [
     "DAILY_BURST_95P",
@@ -44,4 +52,10 @@ __all__ = [
     "detect_precipitation_events",
     "detect_precipitation_events_df",
     "get_definition_by_name",
+    "PrecipitationOutputPaths",
+    "precipitation_definition_slug",
+    "precipitation_output_label",
+    "precipitation_output_paths",
+    "run_precipitation_for_location",
+    "run_precipitation_for_location_result",
 ]
