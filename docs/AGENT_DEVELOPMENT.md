@@ -23,6 +23,71 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -p no:cacheprovider
 - Prefer small compatibility-preserving changes while the legacy
   `urban_heatwave_forecaster` package still exists.
 
+## Scientific Integrity
+
+Separate software refactoring from scientific changes. Refactoring may improve
+structure, naming, tests, typing, or interfaces, but it must preserve scientific
+behavior unless the user explicitly asks for a scientific change.
+
+Agents must not modify these scientific components unless explicitly instructed:
+
+- Hazard definitions
+- Detection thresholds
+- Climatological baselines
+- Severity scales
+- Statistical methods
+- Risk calculations
+
+Any scientific change must include:
+
+- Rationale for the change
+- Affected modules and public outputs
+- Updated documentation
+- Updated tests that cover the changed behavior
+
+## Never Invent Science
+
+Agents must never invent thresholds, climatologies, validation metrics, or
+literature support. If required scientific information is missing, stop and
+report what is missing instead of guessing.
+
+## Layered Architecture
+
+The intended dependency direction is:
+
+```text
+Core
+  ↓
+IO
+  ↓
+Hazard Modules
+  ↓
+Shared Risk Model
+  ↓
+CLI / Streamlit
+```
+
+Lower layers must never depend on higher layers. For example, `core` must not
+import hazard modules, hazard modules must not import Streamlit, and backend
+workflow code should not depend on UI formatting helpers.
+
+## Future Hazard Modules
+
+Future hazards should follow the existing module pattern used by `heat` and
+`precipitation`. Examples include `drought`, `wildfire`, and `coastal`.
+
+Each hazard module should keep its science and workflow local:
+
+- `profiles.py` for explicit candidate definitions when needed
+- `baselines.py` for hazard-specific climatology or reference builders
+- `detection.py` for event detection
+- `risk.py` for hazard-specific severity and shared assessment mapping
+- `workflow.py` for file-producing backend orchestration
+- Tests for detection, risk, summaries, and workflow behavior
+
+New modules should emit the shared `HazardAssessment` contract rather than
+forcing all hazards into one premature total-risk formula.
+
 ## Standard Loop
 
 1. Inspect: read the current tree, status, nearby tests, and relevant modules.
@@ -48,6 +113,8 @@ Stop and report instead of continuing when any of these happen:
   staged.
 - The requested change conflicts with existing unstaged user work.
 - The change requires new platform scope, new hazards, or new product behavior.
+- The change would alter scientific behavior without explicit instruction.
+- Scientific rationale, source information, or validation criteria are missing.
 - The implementation depends on network calls that cannot be mocked or avoided.
 - The intended commit includes mixed concerns that should be split.
 
@@ -66,7 +133,8 @@ or confusing code, current test status, and the smallest safe next step.
 ```text
 Fix only the failing behavior in <area>. Inspect nearby code first, keep the
 change minimal, run the full pytest command, and commit only the relevant
-source and test files. Do not touch generated artifacts.
+source and test files. Do not touch generated artifacts or scientific
+parameters unless explicitly instructed.
 ```
 
 ### Refactor Loop
@@ -75,7 +143,7 @@ source and test files. Do not touch generated artifacts.
 Refactor <specific module/function> without changing behavior. Preserve public
 interfaces, add or update focused tests if needed, run the full pytest command,
 and commit only the refactor files. Stop if the refactor spreads beyond the
-named scope.
+named scope or changes scientific outputs.
 ```
 
 ### Documentation Loop
@@ -86,6 +154,15 @@ code. Verify links and commands against the current repo. Run tests if any
 examples or command contracts changed.
 ```
 
+### Scientific Change Loop
+
+```text
+Make the explicitly requested scientific change to <hazard/module>. Document
+the rationale, affected modules, changed thresholds/methods/calculations,
+updated tests, and any limits or validation gaps. Stop if source information is
+missing.
+```
+
 ## Repository-Specific Notes
 
 - `src/urban_heatwave_forecaster/` is the legacy compatibility surface.
@@ -93,5 +170,9 @@ examples or command contracts changed.
 - `src/climate_extremes/modules/heat/` is the stable heat module.
 - `src/climate_extremes/modules/precipitation/` is still experimental and
   should remain clearly labeled as candidate science until validated.
+- `src/climate_extremes/core/` owns shared contracts, locations, paths, events,
+  severity scales, and summaries.
+- `src/climate_extremes/io/` owns external data access and should stay separate
+  from hazard science.
 - `app.py` is a Streamlit adapter and should stay thin over backend services
   where practical.
