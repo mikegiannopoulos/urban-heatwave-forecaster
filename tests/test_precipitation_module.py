@@ -157,8 +157,9 @@ def test_backtest_precipitation_definitions_summarizes_historical_event_frequenc
 
     backtest = backtest_precipitation_definitions(historical_df, climatology_df)
 
-    assert backtest.iloc[0]["definition_name"] == "wet-spell-3day-95p"
-    assert int(backtest.loc[backtest["definition_name"] == "wet-spell-3day-95p", "event_count"].item()) == 2
+    assert backtest.iloc[0]["definition_name"] == "daily-burst-95p"
+    assert int(backtest.loc[backtest["definition_name"] == "wet-spell-3day-95p", "event_count"].item()) == 1
+    assert int(backtest.loc[backtest["definition_name"] == "wet-spell-3day-95p", "event_days"].item()) == 2
     assert int(backtest.loc[backtest["definition_name"] == "daily-burst-95p", "years_with_events"].item()) == 2
 
 

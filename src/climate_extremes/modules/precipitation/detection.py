@@ -91,11 +91,19 @@ def detect_precipitation_events_df(
             threshold_col: "threshold_mm",
         }
     )
+    accumulation = pd.to_numeric(
+        detected["precip_accumulation_mm"],
+        errors="coerce",
+    )
+    threshold = pd.to_numeric(
+        detected["threshold_mm"],
+        errors="coerce",
+    )
     detected["exceeds_threshold"] = (
-        detected["precip_accumulation_mm"].notna()
-        & detected["threshold_mm"].notna()
-        & (detected["precip_accumulation_mm"] > detected["threshold_mm"])
-        & (detected["precip_accumulation_mm"] >= definition_obj.min_absolute_mm)
+        accumulation.notna()
+        & threshold.notna()
+        & (accumulation > threshold)
+        & (accumulation >= definition_obj.min_absolute_mm)
     )
     detected["precipitation_event_id"] = label_consecutive_runs(
         detected["exceeds_threshold"],
