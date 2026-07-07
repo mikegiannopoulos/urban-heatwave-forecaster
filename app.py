@@ -13,17 +13,44 @@ if SRC_PATH not in sys.path:
     sys.path.insert(0, SRC_PATH)
 
 from urban_heatwave_forecaster import data_fetcher, detect_heatwaves, risk_model
+from climate_extremes.app.display_data import (
+    heat_summary_metrics,
+    prepare_city_comparison_frame,
+    prepare_city_comparison_row,
+    prepare_city_comparison_table,
+    prepare_city_map_hover_text,
+    prepare_heat_risk_dataframe,
+    prepare_heat_risk_table,
+    prepare_probabilistic_display_table,
+    prepare_probabilistic_heat_data,
+    prepare_precipitation_plot_frame,
+    prepare_precipitation_table,
+    prepare_temperature_display_frame,
+)
+from climate_extremes.app.location_selection import (
+    filter_locations_by_country_code,
+    format_candidate_label,
+    format_location_details,
+    format_location_label,
+    validate_coordinate_location_input,
+)
+from climate_extremes.app.result_loading import (
+    generated_files_summary,
+    vulnerability_row_for_label,
+)
+from climate_extremes.app.services import (
+    run_heat_app_workflow,
+    run_precipitation_app_workflow,
+)
+from climate_extremes.core.cities import get_city_location
+from climate_extremes.core.locations import Location
 from climate_extremes.core.summary import summarize_hazards
-from climate_extremes.io.openmeteo import fetch_precipitation_forecast
+from climate_extremes.io.geocoding import OpenMeteoGeocodingError, search_locations
 from climate_extremes.modules.precipitation import (
     WET_SPELL_3DAY_95P,
-    assess_precipitation_risk,
-    build_precipitation_assessment_from_frame,
-    detect_precipitation_events_df,
 )
 
 RISK_ORDER = ["None", "Mild", "Moderate", "High", "Extreme"]
-RISK_TO_SCORE = {risk: score for score, risk in enumerate(RISK_ORDER)}
 RISK_COLORS = {
     "None": "#a8ddb5",
     "Mild": "#fee08b",
@@ -45,51 +72,17 @@ SHARED_CLASS_COLORS = {
     "severe": "#d95763",
     "extreme": "#9c2f4f",
 }
+DEMO_CITY_NAMES = ["Athens", "Rome", "Stockholm", "London"]
 
 
-def base_risk_from_tmax(temp: float) -> str:
-    if temp >= 38:
-        return "Extreme"
-    if temp >= 35:
-        return "High"
-    if temp >= 32:
-        return "Moderate"
-    if temp >= 30:
-        return "Mild"
-    return "None"
-
-
-def enrich_risk_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    out = df.copy()
-    out["date"] = pd.to_datetime(out["date"])
-    out["base_risk_level"] = out["tmax"].apply(base_risk_from_tmax)
-    out["base_risk_score"] = out["base_risk_level"].map(RISK_TO_SCORE)
-    out["adjusted_risk_score"] = out["risk_level"].map(RISK_TO_SCORE)
-    out["risk_escalated"] = out["adjusted_risk_score"] > out["base_risk_score"]
-    return out
+@st.cache_data(ttl=3600, show_spinner=False)
+def cached_location_search(query: str, country_code: str = "") -> list[Location]:
+    candidates = search_locations(query)
+    return filter_locations_by_country_code(candidates, country_code)
 
 
 def format_shared_class(label: str) -> str:
     return str(label).replace("_", " ").title()
-
-
-def run_precipitation_pipeline_for_city(city_name: str, lat: float, lon: float):
-    city_lower = city_name.lower()
-    forecast_df = fetch_precipitation_forecast(lat, lon, city_name)
-    clim_path = Path(f"data/processed/{city_lower}_precipitation_climatology.csv")
-    if not clim_path.exists():
-        raise FileNotFoundError(f"Missing precipitation climatology: {clim_path}")
-
-    forecast_df["date"] = pd.to_datetime(forecast_df["date"])
-    clim_df = pd.read_csv(clim_path)
-    detected_df = detect_precipitation_events_df(
-        forecast_df=forecast_df,
-        climatology_df=clim_df,
-        definition=WET_SPELL_3DAY_95P,
-    )
-    risk_df = assess_precipitation_risk(detected_df.copy(), WET_SPELL_3DAY_95P)
-    assessment = build_precipitation_assessment_from_frame(risk_df, WET_SPELL_3DAY_95P)
-    return detected_df, risk_df, assessment
 
 
 def fetch_multi_model_forecast_compat(
@@ -174,7 +167,7 @@ def run_pipeline_for_city(city_name: str, lat: float, lon: float):
 
     vulnerability_df = pd.read_csv("data/raw/urban_vulnerability.csv")
     risk_df = risk_model.assess_heatwave_risk(detected_df.copy(), vulnerability_df)
-    risk_df = enrich_risk_dataframe(risk_df)
+    risk_df = prepare_heat_risk_dataframe(risk_df)
     return detected_df, risk_df
 
 # --- Paths & logo ---
@@ -219,7 +212,7 @@ st.markdown("""
 with st.expander("🔍 How This Works"):
     st.markdown("""
     **Overview**  
-    This tool forecasts climate extremes by combining short-term weather forecasts with long-term climate norms. The current app supports a full **heat** workflow and a calibrated **heavy precipitation** module.
+    This tool forecasts climate extremes by combining short-term weather forecasts with long-term climate norms. The current app supports a full **heat** workflow and an experimental/candidate **heavy precipitation** module.
 
     **Heatwave Detection**  
     According to the European State of the Climate (ESOTC), a [heatwave](https://climate.copernicus.eu/heatwaves-brief-introduction) happens when for at least three days in a row, both the daytime highs and nighttime lows are hotter than what’s normal for that time of year. Specifically, hotter than 95% of past temperatures recorded between 1991 and 2020.
@@ -274,14 +267,110 @@ with st.expander("📦 How the Data Flows"):
    Heat details, precipitation details, and a combined climate-extremes summary reflect all the above in real time.
         """)
 
-# --- Sidebar: City selection ---
-city = st.sidebar.selectbox("Select a city", ["Athens", "Rome", "Stockholm", "London"])
+# --- Sidebar: Location selection ---
+st.sidebar.header("Location")
+location_mode = st.sidebar.radio(
+    "Location source",
+    ["Demo preset", "Global search", "Coordinates"],
+    horizontal=False,
+)
+
+selected_location: Location | None = None
+is_demo_location = location_mode == "Demo preset"
+
+if location_mode == "Demo preset":
+    city = st.sidebar.selectbox("Select a demo city", DEMO_CITY_NAMES)
+    selected_location = get_city_location(city)
+elif location_mode == "Global search":
+    search_query = st.sidebar.text_input("City or place name", placeholder="Gothenburg")
+    search_country_code = st.sidebar.text_input(
+        "Country code filter",
+        placeholder="SE",
+        max_chars=2,
+        help="Optional ISO country code to narrow results.",
+    )
+    if search_query.strip():
+        try:
+            location_candidates = cached_location_search(
+                search_query.strip(),
+                search_country_code,
+            )
+        except (OpenMeteoGeocodingError, ValueError) as exc:
+            st.sidebar.error(f"Location search failed: {exc}")
+            location_candidates = []
+
+        if not location_candidates:
+            st.sidebar.warning("No matching locations found.")
+        elif len(location_candidates) == 1:
+            selected_location = location_candidates[0]
+            st.sidebar.success(f"Selected {format_location_label(selected_location)}")
+        else:
+            labels = [format_candidate_label(candidate) for candidate in location_candidates]
+            selected_label = st.sidebar.selectbox(
+                "Select a matched location",
+                ["Choose a location..."] + labels,
+                help="Multiple geocoding candidates were found; choose one explicitly.",
+            )
+            if selected_label != "Choose a location...":
+                selected_location = location_candidates[labels.index(selected_label)]
+            else:
+                st.sidebar.info("Choose one candidate before running a forecast.")
+elif location_mode == "Coordinates":
+    custom_name = st.sidebar.text_input("Location name", value="Custom location")
+    custom_lat = st.sidebar.number_input(
+        "Latitude",
+        min_value=-90.0,
+        max_value=90.0,
+        value=57.7089,
+        format="%.4f",
+    )
+    custom_lon = st.sidebar.number_input(
+        "Longitude",
+        min_value=-180.0,
+        max_value=180.0,
+        value=11.9746,
+        format="%.4f",
+    )
+    custom_country_code = st.sidebar.text_input(
+        "Country code",
+        placeholder="SE",
+        max_chars=2,
+    )
+    custom_timezone = st.sidebar.text_input(
+        "Timezone",
+        placeholder="Europe/Stockholm",
+    )
+    try:
+        selected_location = validate_coordinate_location_input(
+            name=custom_name,
+            latitude=float(custom_lat),
+            longitude=float(custom_lon),
+            country_code=custom_country_code,
+            timezone=custom_timezone,
+        )
+    except ValueError as exc:
+        st.sidebar.error(str(exc))
+
+if selected_location is None:
+    st.title("Climate Extremes Assessment")
+    st.info("Select a demo city, geocoded location, or coordinates in the sidebar.")
+    st.stop()
+
+city = selected_location.name
 city_lower = city.lower()
+lat = selected_location.latitude
+lon = selected_location.longitude
+st.sidebar.caption(f"Using: {format_location_label(selected_location)}")
+st.sidebar.caption(format_location_details(selected_location))
+
 run_multi_city_comparison = st.sidebar.checkbox(
     "Enable 4-city comparison",
     value=False,
-    help="Runs additional forecast calls for all available cities."
+    disabled=not is_demo_location,
+    help="Runs additional forecast calls for the four demo cities.",
 )
+if not is_demo_location:
+    st.sidebar.caption("4-city comparison is available for demo presets only.")
 run_probabilistic_risk = st.sidebar.checkbox(
     "Enable probabilistic multi-model risk",
     value=True,
@@ -290,7 +379,7 @@ run_probabilistic_risk = st.sidebar.checkbox(
 include_precipitation_module = st.sidebar.checkbox(
     "Include heavy precipitation module",
     value=True,
-    help="Runs the calibrated 3-day wet-spell precipitation module alongside heat.",
+    help="Runs the experimental/candidate 3-day wet-spell precipitation module alongside heat.",
 )
 prob_model_labels = st.sidebar.multiselect(
     "Models for probabilistic risk",
@@ -307,10 +396,12 @@ latlon = {
     "Stockholm": (59.3294, 18.0687),
     "London": (51.5085, -0.1257)
 }
-lat, lon = latlon[city]
 
 # --- Button to Generate Forecast ---
-st.title(f"Climate Extremes Assessment – {city}")
+st.title(f"Climate Extremes Assessment – {format_location_label(selected_location)}")
+st.caption(
+    f"Selected location: {format_location_details(selected_location)}"
+)
 
 if st.button("Generate Climate Extremes Forecast", type="primary"):
         
@@ -325,43 +416,60 @@ if st.button("Generate Climate Extremes Forecast", type="primary"):
     # Clear the gear before showing results
     gear_placeholder.empty()
 
-    # 1. Fetch forecast
-    with st.spinner("Fetching forecast..."):
+    # 1. Run heat workflow through the backend result contract
+    with st.spinner("Running heat workflow..."):
         try:
-            forecast_df = data_fetcher.fetch_ecmwf_forecast(lat, lon, city)
+            heat_app_data = run_heat_app_workflow(selected_location)
         except Exception as exc:
-            st.error(f"Unable to fetch forecast data from Open-Meteo: {exc}")
+            st.error(f"Unable to run heat workflow: {exc}")
             st.stop()
 
-    # 2. Heatwave detection
-    clim_path = Path(f"data/processed/{city_lower}_climatology_95p.csv")
-    forecast_path = Path(f"data/raw/{city_lower}_forecast.csv")
-    forecast_df.to_csv(forecast_path, index=False)
-    detected_df = detect_heatwaves.detect_heatwaves(forecast_path, clim_path)
+    heat_result = heat_app_data.result
+    detected_df = heat_app_data.detected_df
+    risk_df = heat_app_data.risk_df
+    for warning in heat_result.warnings:
+        st.warning(warning)
 
-    # Ensure 'is_hot' exists
-    if "is_hot" not in detected_df.columns and "exceeds_95p" in detected_df.columns:
-        detected_df["is_hot"] = detected_df["exceeds_95p"]
+    with st.expander("Generated backend outputs"):
+        st.markdown(f"**Heat** · `{heat_result.output_label}`")
+        for line in generated_files_summary(heat_result):
+            st.write(line)
 
-    # 3. Risk assessment
-    vulnerability_df = pd.read_csv("data/raw/urban_vulnerability.csv")
-    risk_df = risk_model.assess_heatwave_risk(detected_df, vulnerability_df)
-    risk_df = enrich_risk_dataframe(risk_df)
+    risk_df = prepare_heat_risk_dataframe(risk_df)
+    vulnerability_df = heat_app_data.vulnerability_df
+    output_label = heat_app_data.output_label
+    clim_path = heat_app_data.climatology_path
 
     precipitation_detected_df = None
     precipitation_risk_df = None
     precipitation_assessment = None
+    precipitation_result = None
     precipitation_error = None
     if include_precipitation_module:
         with st.spinner("Running precipitation module..."):
             try:
-                (
-                    precipitation_detected_df,
-                    precipitation_risk_df,
-                    precipitation_assessment,
-                ) = run_precipitation_pipeline_for_city(city, lat, lon)
+                precipitation_app_data = run_precipitation_app_workflow(
+                    selected_location,
+                    definition=WET_SPELL_3DAY_95P,
+                )
+                precipitation_result = precipitation_app_data.result
+                precipitation_detected_df = precipitation_app_data.detected_df
+                precipitation_risk_df = precipitation_app_data.risk_df
+                precipitation_assessment = precipitation_app_data.assessment
             except Exception as exc:
                 precipitation_error = str(exc)
+        if precipitation_result is not None:
+            for warning in precipitation_result.warnings:
+                st.info(warning)
+            with st.expander("Precipitation outputs"):
+                st.markdown("**Precipitation** · experimental/candidate")
+                for line in generated_files_summary(precipitation_result):
+                    st.write(line)
+
+    fig_df = prepare_temperature_display_frame(detected_df)
+    heat_metrics = heat_summary_metrics(fig_df, risk_df)
+    heatwave_days = heat_metrics["heatwave_days"]
+    extreme_days = heat_metrics["extreme_days"]
 
     heat_assessment_payload = {
         "hazard": "heat",
@@ -372,9 +480,9 @@ if st.button("Generate Climate Extremes Forecast", type="primary"):
         ].lower() if not risk_df.empty else "none",
         "confidence": "medium",
         "key_metrics": {
-            "heatwave_days": int(detected_df["heatwave_id"].notna().sum()),
+            "heatwave_days": int(heatwave_days),
             "peak_tmax_c": round(float(detected_df["tmax"].max()), 1),
-            "peak_tmax_anomaly_c": round(float((detected_df["tmax"] - detected_df["tmax_95p"]).max()), 1),
+            "peak_tmax_anomaly_c": round(float(fig_df["tmax_anomaly"].max()), 1),
         },
         "metadata": {"module": "heat"},
     }
@@ -383,15 +491,11 @@ if st.button("Generate Climate Extremes Forecast", type="primary"):
         assessments.append(precipitation_assessment)
     multi_hazard_summary = summarize_hazards(assessments)
     
-    # --- Summary Metrics ---
-    heatwave_days = detected_df["heatwave_id"].notna().sum()
-    extreme_days = (risk_df["risk_level"] == "Extreme").sum()
-
     # --- Heatwave Message ---
     if detected_df["heatwave_id"].notna().any():
-        st.success(f"**Heatwave detected!** {heatwave_days} heatwave day(s) forecasted for {city}.")
+        st.success(f"**Heatwave detected!** {heatwave_days} heatwave day(s) forecasted for {format_location_label(selected_location)}.")
     else:
-        st.info(f"No heatwave forecasted for {city} in the next 7 days.")
+        st.info(f"No heatwave forecasted for {format_location_label(selected_location)} in the next 7 days.")
     if precipitation_error:
         st.warning(f"Precipitation module unavailable for this run: {precipitation_error}")
     elif precipitation_assessment is not None:
@@ -402,28 +506,34 @@ if st.button("Generate Climate Extremes Forecast", type="primary"):
         else:
             st.info("No heavy precipitation signal detected in the next 7 days.")
 
-    fig_df = detected_df.copy()
-    fig_df["date"] = pd.to_datetime(fig_df["date"])
-    fig_df["Heatwave"] = fig_df["heatwave_id"].notna().map({True: "Yes", False: "No"})
-    fig_df["tmax_anomaly"] = fig_df["tmax"] - fig_df["tmax_95p"]
-    fig_df["tmin_anomaly"] = fig_df["tmin"] - fig_df["tmin_95p"]
-
-    city_vuln = vulnerability_df.loc[vulnerability_df["city"] == city_lower].iloc[0]
-    escalated_days = int(risk_df["risk_escalated"].sum())
-    max_tmax = float(fig_df["tmax"].max())
-    max_anomaly = float(fig_df["tmax_anomaly"].max())
+    city_vuln = vulnerability_row_for_label(vulnerability_df, output_label)
+    escalated_days = heat_metrics["escalated_days"]
+    max_tmax = heat_metrics["max_tmax"]
+    max_anomaly = heat_metrics["max_tmax_anomaly"]
 
     # --- Summary Metrics ---
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Heatwave Days", heatwave_days)
     m2.metric("Extreme-Risk Days", int(extreme_days))
-    m3.metric("Peak Tmax", f"{max_tmax:.1f}°C")
-    m4.metric("Tmax Peak Anomaly", f"{max_anomaly:+.1f}°C")
+    m3.metric("Peak Tmax", f"{max_tmax:.1f}°C" if max_tmax is not None else "Unavailable")
+    m4.metric(
+        "Tmax Peak Anomaly",
+        f"{max_anomaly:+.1f}°C" if max_anomaly is not None else "Unavailable",
+    )
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Elderly Share", f"{city_vuln['elderly_percent']:.1f}%")
-    c2.metric("Green Cover", f"{city_vuln['green_cover_percent']:.1f}%")
-    c3.metric("Density", f"{int(city_vuln['density_per_km2']):,}/km²")
+    if city_vuln is not None:
+        c1.metric("Elderly Share", f"{city_vuln['elderly_percent']:.1f}%")
+        c2.metric("Green Cover", f"{city_vuln['green_cover_percent']:.1f}%")
+        c3.metric("Density", f"{int(city_vuln['density_per_km2']):,}/km²")
+    else:
+        c1.metric("Elderly Share", "Unavailable")
+        c2.metric("Green Cover", "Unavailable")
+        c3.metric("Density", "Unavailable")
+        st.info(
+            "Urban vulnerability adjustment is unavailable for this location; "
+            "heat severity is meteorological only."
+        )
     c4.metric("Risk Escalation Days", escalated_days)
 
     st.subheader("🌐 Multi-Hazard Summary")
@@ -551,7 +661,11 @@ if st.button("Generate Climate Extremes Forecast", type="primary"):
         x=risk_df["date"],
         y=risk_df["adjusted_risk_score"],
         mode="lines+markers",
-        name="Adjusted risk (with vulnerability)",
+        name=(
+            "Adjusted risk (with vulnerability)"
+            if city_vuln is not None
+            else "Final risk (meteorological only)"
+        ),
         line=dict(color="#d7263d", width=3),
         marker=dict(size=9)
     ))
@@ -576,24 +690,7 @@ if st.button("Generate Climate Extremes Forecast", type="primary"):
     )
     st.plotly_chart(risk_fig, use_container_width=True)
 
-    # --- Color-coded Risk Table ---
-    emoji_map = {"Extreme": "🔥🔥", "High": "🔥", "Moderate": "🌡️", "Mild": "☀️", "None": "❄️"}
-    risk_display = risk_df.copy()
-
-    # Format date as "Tue, Jul 29"
-    risk_display["date"] = pd.to_datetime(risk_display["date"])
-    risk_display["date"] = risk_display["date"].dt.strftime("%a, %b %d")
-
-    # Map emojis
-    risk_display["⚠️"] = risk_display["risk_level"].map(emoji_map)
-    risk_display["Escalated"] = risk_display["risk_escalated"].map({True: "⬆️", False: ""})
-
-    # Select and rename columns
-    styled = risk_display[["date", "tmax", "base_risk_level", "risk_level", "Escalated", "⚠️"]]
-    styled.columns = ["Date", "Tmax (°C)", "Base Risk", "Final Risk", "Vulnerability Lift", ""]
-
-    # Remove the index before displaying
-    styled = styled.reset_index(drop=True)
+    styled = prepare_heat_risk_table(risk_df)
 
     st.subheader("📋 Heatwave Risk Table")
     st.dataframe(styled)
@@ -618,8 +715,7 @@ if st.button("Generate Climate Extremes Forecast", type="primary"):
             f"{precipitation_assessment.key_metrics['peak_exceedance_ratio']:.2f}",
         )
 
-        precip_plot_df = precipitation_risk_df.copy()
-        precip_plot_df["date"] = pd.to_datetime(precip_plot_df["date"])
+        precip_plot_df = prepare_precipitation_plot_frame(precipitation_risk_df)
         precip_fig = go.Figure()
         precip_fig.add_trace(
             go.Bar(
@@ -656,25 +752,7 @@ if st.button("Generate Climate Extremes Forecast", type="primary"):
         )
         st.plotly_chart(precip_fig, use_container_width=True)
 
-        precip_display = precip_plot_df[
-            [
-                "date",
-                "precipitation_sum",
-                "precip_accumulation_mm",
-                "threshold_mm",
-                "exceeds_threshold",
-                "risk_level",
-            ]
-        ].copy()
-        precip_display["date"] = precip_display["date"].dt.strftime("%a, %b %d")
-        precip_display.columns = [
-            "Date",
-            "Daily Rain (mm)",
-            "3-Day Total (mm)",
-            "Threshold (mm)",
-            "Event Flag",
-            "Severity Class",
-        ]
+        precip_display = prepare_precipitation_table(precipitation_risk_df)
         st.dataframe(precip_display, use_container_width=True, hide_index=True)
 
     if run_probabilistic_risk:
@@ -705,7 +783,7 @@ if st.button("Generate Climate Extremes Forecast", type="primary"):
                         multi_forecast_df, failed_models = fetch_multi_model_forecast_compat(
                             lat=lat,
                             lon=lon,
-                            city_name=city,
+                            city_name=output_label,
                             models=additional_models,
                             forecast_days=7,
                         )
@@ -731,7 +809,7 @@ if st.button("Generate Climate Extremes Forecast", type="primary"):
                             model_detected.copy(),
                             vulnerability_df.copy(),
                         )
-                        model_risk = enrich_risk_dataframe(model_risk)
+                        model_risk = prepare_heat_risk_dataframe(model_risk)
                         model_risk["model"] = model_code
                         ensemble_frames.append(model_risk)
 
@@ -746,55 +824,13 @@ if st.button("Generate Climate Extremes Forecast", type="primary"):
 
             if ensemble_frames:
                 ensemble_risk_df = pd.concat(ensemble_frames, ignore_index=True)
-                ensemble_risk_df["date"] = pd.to_datetime(ensemble_risk_df["date"])
-
-                models_available = (
-                    ensemble_risk_df.groupby("date")["model"].nunique().sort_index()
+                probability_data = prepare_probabilistic_heat_data(
+                    ensemble_risk_df,
+                    RISK_ORDER,
                 )
-                risk_counts = (
-                    ensemble_risk_df.pivot_table(
-                        index="date",
-                        columns="risk_level",
-                        values="model",
-                        aggfunc="count",
-                        fill_value=0,
-                    )
-                    .reindex(columns=RISK_ORDER, fill_value=0)
-                    .sort_index()
-                )
-                risk_probs = risk_counts.div(risk_counts.sum(axis=1), axis=0).fillna(0.0)
-
-                probability_df = pd.DataFrame(index=risk_probs.index)
-                probability_df["models_available"] = models_available
-                probability_df["p_heatwave"] = (
-                    ensemble_risk_df.groupby("date")["heatwave_id"]
-                    .apply(lambda s: s.notna().mean())
-                    .sort_index()
-                )
-                probability_df["p_high_plus"] = (
-                    ensemble_risk_df.groupby("date")["risk_level"]
-                    .apply(lambda s: s.isin(["High", "Extreme"]).mean())
-                    .sort_index()
-                )
-                probability_df["p_extreme"] = (
-                    ensemble_risk_df.groupby("date")["risk_level"]
-                    .apply(lambda s: (s == "Extreme").mean())
-                    .sort_index()
-                )
-                probability_df["expected_risk_score"] = (
-                    ensemble_risk_df.groupby("date")["adjusted_risk_score"].mean().sort_index()
-                )
-                probability_df["most_likely_risk"] = risk_probs.idxmax(axis=1)
-
-                def _consensus_from_probs(row: pd.Series) -> str:
-                    for level in reversed(RISK_ORDER):
-                        if row[level] >= 0.5:
-                            return level
-                    return "Uncertain"
-
-                probability_df["consensus_risk"] = risk_probs.apply(_consensus_from_probs, axis=1)
-
-                model_codes_used = list(dict.fromkeys(ensemble_risk_df["model"]))
+                probability_df = probability_data.probability_df
+                risk_probs = probability_data.risk_probabilities
+                model_codes_used = probability_data.model_codes
                 model_labels_used = [
                     f"{MODEL_LABEL_BY_CODE.get(code, code)} ({code})"
                     for code in model_codes_used
@@ -859,33 +895,8 @@ if st.button("Generate Climate Extremes Forecast", type="primary"):
                 )
                 st.plotly_chart(dist_fig, use_container_width=True)
 
-                prob_display = probability_df.reset_index().copy()
-                prob_display["date"] = pd.to_datetime(prob_display["date"]).dt.strftime("%a, %b %d")
-                prob_display["P(Heatwave)"] = (prob_display["p_heatwave"] * 100).round(1)
-                prob_display["P(High+)"] = (prob_display["p_high_plus"] * 100).round(1)
-                prob_display["P(Extreme)"] = (prob_display["p_extreme"] * 100).round(1)
-                prob_display["Expected Risk Score"] = prob_display["expected_risk_score"].round(2)
-                prob_display["Models"] = prob_display["models_available"].astype(int)
-
                 st.dataframe(
-                    prob_display[
-                        [
-                            "date",
-                            "Models",
-                            "P(Heatwave)",
-                            "P(High+)",
-                            "P(Extreme)",
-                            "most_likely_risk",
-                            "consensus_risk",
-                            "Expected Risk Score",
-                        ]
-                    ].rename(
-                        columns={
-                            "date": "Date",
-                            "most_likely_risk": "Most Likely Risk",
-                            "consensus_risk": "Consensus Risk (>=50%)",
-                        }
-                    ),
+                    prepare_probabilistic_display_table(probability_df),
                     use_container_width=True,
                     hide_index=True,
                 )
@@ -917,40 +928,20 @@ if st.button("Generate Climate Extremes Forecast", type="primary"):
                     comp_risk_df = comp_risk_df.copy()
                     comp_risk_df["date"] = pd.to_datetime(comp_risk_df["date"])
 
-                comp_detected_df["tmax_anomaly"] = (
-                    comp_detected_df["tmax"] - comp_detected_df["tmax_95p"]
-                )
-                comp_risk_df = enrich_risk_dataframe(comp_risk_df)
-
-                max_risk_score = int(comp_risk_df["adjusted_risk_score"].max())
                 comparison_rows.append(
-                    {
-                        "city": comp_city,
-                        "lat": comp_lat,
-                        "lon": comp_lon,
-                        "heatwave_days": int(comp_detected_df["heatwave_id"].notna().sum()),
-                        "escalated_days": int(comp_risk_df["risk_escalated"].sum()),
-                        "peak_tmax": float(comp_detected_df["tmax"].max()),
-                        "peak_tmax_anomaly": float(comp_detected_df["tmax_anomaly"].max()),
-                        "max_risk_score": max_risk_score,
-                        "max_risk_level": RISK_ORDER[max_risk_score],
-                    }
+                    prepare_city_comparison_row(
+                        comp_city,
+                        comp_lat,
+                        comp_lon,
+                        comp_detected_df,
+                        comp_risk_df,
+                        RISK_ORDER,
+                    )
                 )
 
-            compare_df = pd.DataFrame(comparison_rows).sort_values(
-                ["max_risk_score", "peak_tmax"],
-                ascending=[False, False]
-            )
+            compare_df = prepare_city_comparison_frame(comparison_rows)
 
-        map_text = compare_df.apply(
-            lambda row: (
-                f"{row['city']}<br>"
-                f"Max risk: {row['max_risk_level']}<br>"
-                f"Peak Tmax: {row['peak_tmax']:.1f}°C<br>"
-                f"Heatwave days: {row['heatwave_days']}"
-            ),
-            axis=1
-        )
+        map_text = prepare_city_map_hover_text(compare_df)
 
         map_fig = go.Figure(
             go.Scattergeo(
@@ -1024,22 +1015,5 @@ if st.button("Generate Climate Extremes Forecast", type="primary"):
         )
         st.plotly_chart(compare_chart, use_container_width=True)
 
-        compare_display = compare_df[
-            [
-                "city",
-                "max_risk_level",
-                "heatwave_days",
-                "escalated_days",
-                "peak_tmax",
-                "peak_tmax_anomaly",
-            ]
-        ].copy()
-        compare_display.columns = [
-            "City",
-            "Max Risk",
-            "Heatwave Days",
-            "Escalation Days",
-            "Peak Tmax (°C)",
-            "Peak Tmax Anomaly (°C)",
-        ]
+        compare_display = prepare_city_comparison_table(compare_df)
         st.dataframe(compare_display, use_container_width=True, hide_index=True)
