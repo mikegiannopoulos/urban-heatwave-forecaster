@@ -8,6 +8,8 @@ import pandas as pd
 from climate_extremes.app.display_data import (
     CITY_COMPARISON_TABLE_COLUMNS,
     HEAT_RISK_TABLE_COLUMNS,
+    format_hazard_status,
+    format_heat_signal_message,
     PRECIPITATION_TABLE_COLUMNS,
     PROBABILISTIC_DISPLAY_COLUMNS,
     heat_summary_metrics,
@@ -30,6 +32,19 @@ def test_display_data_module_does_not_import_streamlit():
     importlib.import_module("climate_extremes.app.display_data")
 
     assert "streamlit" not in sys.modules
+
+
+def test_hazard_status_and_heat_signal_messages_are_dashboard_friendly():
+    assert format_hazard_status("heightened heat conditions") == "Heat hazard signal"
+    assert format_hazard_status("no active hazard conditions") == "No hazard signal"
+
+    level, message = format_heat_signal_message(0, "Gothenburg")
+    assert level == "info"
+    assert message == "No heatwave signal in the forecast window for Gothenburg."
+
+    level, message = format_heat_signal_message(2, "Athens")
+    assert level == "success"
+    assert message == "Heat hazard signal detected: 2 heatwave day(s) in the forecast window for Athens."
 
 
 def test_prepare_temperature_display_frame_adds_dates_flags_and_anomalies():
@@ -107,8 +122,8 @@ def test_prepare_heat_risk_table_columns_and_missing_escalation():
 
     assert table.columns.tolist() == HEAT_RISK_TABLE_COLUMNS
     assert table.loc[0, "Date"] == pd.Timestamp("2030-07-01").strftime("%a, %b %d")
-    assert table.loc[0, "Final Risk"] == "High"
-    assert table.loc[0, "Vulnerability Lift"] == ""
+    assert table.loc[0, "Final Heat Class"] == "High"
+    assert "Vulnerability Lift" not in table.columns
 
 
 def test_prepare_precipitation_plot_and_table_frames():
@@ -256,6 +271,7 @@ def test_prepare_city_comparison_data_and_display_table():
     assert frame.loc[0, "max_risk_level"] == "Extreme"
     assert table.columns.tolist() == CITY_COMPARISON_TABLE_COLUMNS
     assert table.loc[0, "City"] == "Athens"
+    assert "Escalation Days" not in table.columns
     assert "Peak Tmax: 39.0°C" in hover_text.iloc[0]
 
 

@@ -18,9 +18,8 @@ HEAT_RISK_EMOJI = {
 HEAT_RISK_TABLE_COLUMNS = [
     "Date",
     "Tmax (°C)",
-    "Base Risk",
-    "Final Risk",
-    "Vulnerability Lift",
+    "Temperature Class",
+    "Final Heat Class",
     "",
 ]
 PRECIPITATION_TABLE_COLUMNS = [
@@ -41,6 +40,11 @@ PROBABILISTIC_DISPLAY_COLUMNS = [
     "Consensus Risk (>=50%)",
     "Expected Risk Score",
 ]
+HAZARD_STATUS_LABELS = {
+    "no module assessments available": "No hazard modules available",
+    "no active hazard conditions": "No hazard signal",
+    "elevated multi-hazard conditions": "Multiple hazard signals",
+}
 CITY_COMPARISON_COLUMNS = [
     "city",
     "lat",
@@ -54,9 +58,8 @@ CITY_COMPARISON_COLUMNS = [
 ]
 CITY_COMPARISON_TABLE_COLUMNS = [
     "City",
-    "Max Risk",
+    "Max Heat Class",
     "Heatwave Days",
-    "Escalation Days",
     "Peak Tmax (°C)",
     "Peak Tmax Anomaly (°C)",
 ]
@@ -155,12 +158,9 @@ def prepare_heat_risk_table(risk_df: pd.DataFrame) -> pd.DataFrame:
     )
     display["date"] = pd.to_datetime(display["date"]).dt.strftime("%a, %b %d")
     display["icon"] = display["risk_level"].map(HEAT_RISK_EMOJI)
-    display["Escalated"] = display["risk_escalated"].fillna(False).map(
-        {True: "⬆️", False: ""}
-    )
 
     table = display[
-        ["date", "tmax", "base_risk_level", "risk_level", "Escalated", "icon"]
+        ["date", "tmax", "base_risk_level", "risk_level", "icon"]
     ].copy()
     table.columns = HEAT_RISK_TABLE_COLUMNS
     return table.reset_index(drop=True)
@@ -290,6 +290,26 @@ def consensus_from_probabilities(
     return "Uncertain"
 
 
+def format_hazard_status(status: object) -> str:
+    normalized = str(status or "").strip().lower()
+    if normalized.startswith("heightened ") and normalized.endswith(" conditions"):
+        hazard = normalized.removeprefix("heightened ").removesuffix(" conditions")
+        return f"{hazard.title()} hazard signal"
+    return HAZARD_STATUS_LABELS.get(normalized, str(status).replace("_", " ").title())
+
+
+def format_heat_signal_message(heatwave_days: int, location_label: str) -> tuple[str, str]:
+    if heatwave_days > 0:
+        return (
+            "success",
+            f"Heat hazard signal detected: {heatwave_days} heatwave day(s) in the forecast window for {location_label}.",
+        )
+    return (
+        "info",
+        f"No heatwave signal in the forecast window for {location_label}.",
+    )
+
+
 def prepare_probabilistic_display_table(probability_df: pd.DataFrame) -> pd.DataFrame:
     if probability_df.empty:
         return pd.DataFrame(columns=PROBABILISTIC_DISPLAY_COLUMNS)
@@ -377,7 +397,6 @@ def prepare_city_comparison_table(compare_df: pd.DataFrame) -> pd.DataFrame:
             "city",
             "max_risk_level",
             "heatwave_days",
-            "escalated_days",
             "peak_tmax",
             "peak_tmax_anomaly",
         ]
