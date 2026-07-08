@@ -1,4 +1,4 @@
-# <img src="assets/urban-heatwave-forecaster_new.png" alt="Climate Hazards Forecaster Logo" width="80"> Climate Hazards Forecaster
+# <img src="assets/climate-hazards-forecaster.png" alt="Climate Hazards Forecaster Logo" width="80"> Climate Hazards Forecaster
 
 Climate Hazards Forecaster is a modular app for forecasting and assessing climate hazards from short-term weather forecasts and climatological baselines.
 
