@@ -216,7 +216,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-with st.expander("🔍 How This Works"):
+with st.expander("How this works", expanded=False):
     st.markdown("""
     **Overview**  
     Climate Hazards Forecaster combines short-term weather forecasts with long-term climate norms. The current app supports a full **heat** workflow and an experimental/candidate **heavy precipitation** module.
@@ -245,7 +245,7 @@ with st.expander("🔍 How This Works"):
     - Historical normals: [ECMWF IFS model 1991–2020 reanalysis](https://open-meteo.com/en/docs/historical-weather-api)
     """, unsafe_allow_html=True)
 
-with st.expander("📦 How the Data Flows"):
+with st.expander("How the data flows", expanded=False):
         st.markdown("""
 ### 🧬 Step-by-Step Processing
 
@@ -442,11 +442,6 @@ if st.button("Generate Climate Hazard Forecast", type="primary"):
         if "vulnerability" not in warning.lower():
             st.warning(warning)
 
-    with st.expander("Generated backend outputs"):
-        st.markdown(f"**Heat** · `{heat_result.output_label}`")
-        for line in generated_files_summary(heat_result):
-            st.write(line)
-
     risk_df = prepare_heat_risk_dataframe(risk_df)
     vulnerability_df = heat_app_data.vulnerability_df
     output_label = heat_app_data.output_label
@@ -470,12 +465,6 @@ if st.button("Generate Climate Hazard Forecast", type="primary"):
                 precipitation_assessment = precipitation_app_data.assessment
             except Exception as exc:
                 precipitation_error = str(exc)
-        if precipitation_result is not None:
-            with st.expander("Precipitation outputs"):
-                st.markdown("**Precipitation** · experimental/candidate")
-                for line in generated_files_summary(precipitation_result):
-                    st.write(line)
-
     fig_df = prepare_temperature_display_frame(detected_df)
     heat_metrics = heat_summary_metrics(fig_df, risk_df)
     heatwave_days = heat_metrics["heatwave_days"]
@@ -530,27 +519,27 @@ if st.button("Generate Climate Hazard Forecast", type="primary"):
         precip_summary_3.metric("Severity Class", format_shared_class(precipitation_assessment.severity_class))
         precip_summary_4.metric("Definition", WET_SPELL_3DAY_95P.name)
 
-    st.subheader("🌐 Module Summary")
-    mh1, mh2, mh3 = st.columns(3)
-    mh1.metric("Summary Class", format_shared_class(multi_hazard_summary["summary_class"]))
-    mh2.metric("Primary Hazard", format_shared_class(primary_hazard))
-    mh3.metric("Module Assessments", len(multi_hazard_summary["module_summaries"]))
+    with st.expander("Technical module summary", expanded=False):
+        mh1, mh2, mh3 = st.columns(3)
+        mh1.metric("Summary Class", format_shared_class(multi_hazard_summary["summary_class"]))
+        mh2.metric("Primary Hazard", format_shared_class(primary_hazard))
+        mh3.metric("Module Assessments", len(multi_hazard_summary["module_summaries"]))
 
-    module_cards = st.columns(max(len(multi_hazard_summary["module_summaries"]), 1))
-    for idx, module_summary in enumerate(multi_hazard_summary["module_summaries"]):
-        with module_cards[idx]:
-            hazard_name = format_shared_class(module_summary["hazard"])
-            st.markdown(f"**{hazard_name}**")
-            badge_color = SHARED_CLASS_COLORS.get(module_summary["severity_class"], "#cccccc")
-            st.markdown(
-                f"<div style='padding:0.5rem 0.75rem;border-radius:0.75rem;background:{badge_color};color:white;font-weight:600;margin-bottom:0.5rem;'>{format_shared_class(module_summary['severity_class'])}</div>",
-                unsafe_allow_html=True,
-            )
-            st.caption(
-                f"Detected: {'Yes' if module_summary['event_detected'] else 'No'} | Score: {module_summary['severity_score']:.1f}"
-            )
-            for metric_key, metric_value in list(module_summary.get("key_metrics", {}).items())[:3]:
-                st.write(f"{metric_key.replace('_', ' ').title()}: {metric_value}")
+        module_cards = st.columns(max(len(multi_hazard_summary["module_summaries"]), 1))
+        for idx, module_summary in enumerate(multi_hazard_summary["module_summaries"]):
+            with module_cards[idx]:
+                hazard_name = format_shared_class(module_summary["hazard"])
+                st.markdown(f"**{hazard_name}**")
+                badge_color = SHARED_CLASS_COLORS.get(module_summary["severity_class"], "#cccccc")
+                st.markdown(
+                    f"<div style='padding:0.5rem 0.75rem;border-radius:0.75rem;background:{badge_color};color:white;font-weight:600;margin-bottom:0.5rem;'>{format_shared_class(module_summary['severity_class'])}</div>",
+                    unsafe_allow_html=True,
+                )
+                st.caption(
+                    f"Detected: {'Yes' if module_summary['event_detected'] else 'No'} | Score: {module_summary['severity_score']:.1f}"
+                )
+                for metric_key, metric_value in list(module_summary.get("key_metrics", {}).items())[:3]:
+                    st.write(f"{metric_key.replace('_', ' ').title()}: {metric_value}")
 
     # --- Plotly Chart 1: Forecast vs Climatology ---
     st.subheader("📈 Forecast vs Climatology Thresholds")
@@ -614,78 +603,78 @@ if st.button("Generate Climate Hazard Forecast", type="primary"):
     st.plotly_chart(fig, use_container_width=True)
 
     # --- Plotly Chart 2: Daily Anomalies ---
-    st.subheader("🌡️ Daily Temperature Anomalies vs 95th Percentile")
-    anomaly_fig = go.Figure()
-    anomaly_fig.add_trace(go.Bar(
-        x=fig_df["date"],
-        y=fig_df["tmax_anomaly"],
-        name="Tmax anomaly",
-        marker_color="#ff6f3c"
-    ))
-    anomaly_fig.add_trace(go.Bar(
-        x=fig_df["date"],
-        y=fig_df["tmin_anomaly"],
-        name="Tmin anomaly",
-        marker_color="#3399ff"
-    ))
-    anomaly_fig.add_hline(y=0, line_dash="dot", line_color="gray")
-    anomaly_fig.update_layout(
-        barmode="group",
-        xaxis_title="Date",
-        yaxis_title="Anomaly (°C)",
-        margin=dict(l=40, r=20, t=30, b=40),
-        legend=dict(title="")
-    )
-    st.plotly_chart(anomaly_fig, use_container_width=True)
+    with st.expander("Daily temperature anomalies", expanded=False):
+        anomaly_fig = go.Figure()
+        anomaly_fig.add_trace(go.Bar(
+            x=fig_df["date"],
+            y=fig_df["tmax_anomaly"],
+            name="Tmax anomaly",
+            marker_color="#ff6f3c"
+        ))
+        anomaly_fig.add_trace(go.Bar(
+            x=fig_df["date"],
+            y=fig_df["tmin_anomaly"],
+            name="Tmin anomaly",
+            marker_color="#3399ff"
+        ))
+        anomaly_fig.add_hline(y=0, line_dash="dot", line_color="gray")
+        anomaly_fig.update_layout(
+            barmode="group",
+            xaxis_title="Date",
+            yaxis_title="Anomaly (°C)",
+            margin=dict(l=40, r=20, t=30, b=40),
+            legend=dict(title="")
+        )
+        st.plotly_chart(anomaly_fig, use_container_width=True)
 
     # --- Plotly Chart 3: Heat hazard severity ---
-    st.subheader("🧮 Heat Hazard Classification")
-    risk_fig = go.Figure()
-    risk_fig.add_trace(go.Scatter(
-        x=risk_df["date"],
-        y=risk_df["base_risk_score"],
-        mode="lines+markers",
-        name="Temperature-only class",
-        line=dict(color="#8e8e8e", width=2, dash="dot"),
-        marker=dict(size=7)
-    ))
-    risk_fig.add_trace(go.Scatter(
-        x=risk_df["date"],
-        y=risk_df["adjusted_risk_score"],
-        mode="lines+markers",
-        name="Final heat class",
-        line=dict(color="#d7263d", width=3),
-        marker=dict(size=9)
-    ))
-    if risk_df["risk_escalated"].any():
+    with st.expander("Daily heat class", expanded=False):
+        risk_fig = go.Figure()
         risk_fig.add_trace(go.Scatter(
-            x=risk_df.loc[risk_df["risk_escalated"], "date"],
-            y=risk_df.loc[risk_df["risk_escalated"], "adjusted_risk_score"],
-            mode="markers",
-            name="Local adjustment present",
-            marker=dict(size=13, color="#ffa600", symbol="diamond")
+            x=risk_df["date"],
+            y=risk_df["base_risk_score"],
+            mode="lines+markers",
+            name="Temperature class",
+            line=dict(color="#8e8e8e", width=2, dash="dot"),
+            marker=dict(size=7)
         ))
-    risk_fig.update_layout(
-        xaxis_title="Date",
-        yaxis_title="Risk Level",
-        yaxis=dict(
-            tickmode="array",
-            tickvals=list(range(len(RISK_ORDER))),
-            ticktext=RISK_ORDER,
-            range=[-0.3, len(RISK_ORDER) - 0.7]
-        ),
-        margin=dict(l=40, r=20, t=30, b=40),
-        legend=dict(title="")
-    )
-    st.plotly_chart(risk_fig, use_container_width=True)
+        risk_fig.add_trace(go.Scatter(
+            x=risk_df["date"],
+            y=risk_df["adjusted_risk_score"],
+            mode="lines+markers",
+            name="Reported heat class",
+            line=dict(color="#d7263d", width=3),
+            marker=dict(size=9)
+        ))
+        if risk_df["risk_escalated"].any():
+            risk_fig.add_trace(go.Scatter(
+                x=risk_df.loc[risk_df["risk_escalated"], "date"],
+                y=risk_df.loc[risk_df["risk_escalated"], "adjusted_risk_score"],
+                mode="markers",
+                name="Local adjustment present",
+                marker=dict(size=13, color="#ffa600", symbol="diamond")
+            ))
+        risk_fig.update_layout(
+            xaxis_title="Date",
+            yaxis_title="Heat class",
+            yaxis=dict(
+                tickmode="array",
+                tickvals=list(range(len(RISK_ORDER))),
+                ticktext=RISK_ORDER,
+                range=[-0.3, len(RISK_ORDER) - 0.7]
+            ),
+            margin=dict(l=40, r=20, t=30, b=40),
+            legend=dict(title="")
+        )
+        st.plotly_chart(risk_fig, use_container_width=True)
 
     styled = prepare_heat_risk_table(risk_df)
 
-    st.subheader("📋 Heat Hazard Table")
-    st.dataframe(styled)
+    with st.expander("Heat hazard table", expanded=False):
+        st.dataframe(styled)
 
     if precipitation_assessment is not None and precipitation_risk_df is not None:
-        st.subheader("🌧️ Heavy Precipitation Details")
+        st.subheader("🌧️ Experimental precipitation details")
         st.caption("Experimental/candidate module; thresholds and definitions should be validated before operational use.")
 
         precip_plot_df = prepare_precipitation_plot_frame(precipitation_risk_df)
@@ -726,267 +715,278 @@ if st.button("Generate Climate Hazard Forecast", type="primary"):
         st.plotly_chart(precip_fig, use_container_width=True)
 
         precip_display = prepare_precipitation_table(precipitation_risk_df)
-        st.dataframe(precip_display, use_container_width=True, hide_index=True)
+        with st.expander("Precipitation table", expanded=False):
+            st.dataframe(precip_display, use_container_width=True, hide_index=True)
 
     if run_probabilistic_risk:
-        st.subheader("🎲 Probabilistic Multi-Model Risk")
-        st.caption(
-            "Daily probabilities built from multiple forecast models using the same detection and risk pipeline."
-        )
+        with st.expander("Multi-model uncertainty", expanded=False):
+            st.caption(
+                "Daily probabilities built from multiple forecast models using the same detection and risk pipeline."
+            )
 
-        if not selected_prob_models:
-            st.info("Select at least one model in the sidebar to compute probabilistic risk.")
-        else:
-            ensemble_frames = []
-            failed_models = []
-
-            if "ecmwf_ifs025" in selected_prob_models:
-                ecmwf_frame = risk_df.copy()
-                ecmwf_frame["model"] = "ecmwf_ifs025"
-                ensemble_frames.append(ecmwf_frame)
-
-            additional_models = [
-                model for model in selected_prob_models if model != "ecmwf_ifs025"
-            ]
-
-            if additional_models:
-                multi_forecast_df = pd.DataFrame()
-                with st.spinner("Fetching additional forecast models..."):
-                    try:
-                        multi_forecast_df, failed_models = fetch_multi_model_forecast_compat(
-                            lat=lat,
-                            lon=lon,
-                            city_name=output_label,
-                            models=additional_models,
-                            forecast_days=7,
-                        )
-                    except (RuntimeError, AttributeError) as exc:
-                        failed_models = [
-                            {"model": model, "error": str(exc)} for model in additional_models
-                        ]
-
-                if not multi_forecast_df.empty:
-                    for model_code, model_forecast in multi_forecast_df.groupby("model"):
-                        model_detected = detect_heatwaves_df_compat(
-                            forecast_df=model_forecast[["date", "tmin", "tmax", "city"]],
-                            clim_path=clim_path,
-                            min_run=3,
-                        )
-                        if (
-                            "is_hot" not in model_detected.columns
-                            and "exceeds_95p" in model_detected.columns
-                        ):
-                            model_detected["is_hot"] = model_detected["exceeds_95p"]
-
-                        model_risk = risk_model.assess_heatwave_risk(
-                            model_detected.copy(),
-                            vulnerability_df.copy(),
-                        )
-                        model_risk = prepare_heat_risk_dataframe(model_risk)
-                        model_risk["model"] = model_code
-                        ensemble_frames.append(model_risk)
-
-            if failed_models:
-                failed_names = ", ".join(
-                    f"{MODEL_LABEL_BY_CODE.get(item['model'], item['model'])}"
-                    for item in failed_models
-                )
-                st.warning(
-                    f"Excluded unavailable models in this run: {failed_names}."
-                )
-
-            if ensemble_frames:
-                ensemble_risk_df = pd.concat(ensemble_frames, ignore_index=True)
-                probability_data = prepare_probabilistic_heat_data(
-                    ensemble_risk_df,
-                    RISK_ORDER,
-                )
-                probability_df = probability_data.probability_df
-                risk_probs = probability_data.risk_probabilities
-                model_codes_used = probability_data.model_codes
-                model_labels_used = [
-                    f"{MODEL_LABEL_BY_CODE.get(code, code)} ({code})"
-                    for code in model_codes_used
-                ]
-                st.caption(f"Models used: {', '.join(model_labels_used)}")
-
-                prob_fig = go.Figure()
-                prob_fig.add_trace(
-                    go.Scatter(
-                        x=probability_df.index,
-                        y=probability_df["p_heatwave"] * 100,
-                        mode="lines+markers",
-                        name="P(Heatwave)",
-                        line=dict(color="#6a4c93", width=2.5),
-                    )
-                )
-                prob_fig.add_trace(
-                    go.Scatter(
-                        x=probability_df.index,
-                        y=probability_df["p_high_plus"] * 100,
-                        mode="lines+markers",
-                        name="P(High+)",
-                        line=dict(color="#f46d43", width=2.5),
-                    )
-                )
-                prob_fig.add_trace(
-                    go.Scatter(
-                        x=probability_df.index,
-                        y=probability_df["p_extreme"] * 100,
-                        mode="lines+markers",
-                        name="P(Extreme)",
-                        line=dict(color="#d73027", width=2.5),
-                    )
-                )
-                prob_fig.update_layout(
-                    xaxis_title="Date",
-                    yaxis_title="Probability (%)",
-                    yaxis=dict(range=[0, 100]),
-                    margin=dict(l=40, r=20, t=30, b=40),
-                    legend=dict(title=""),
-                )
-                st.plotly_chart(prob_fig, use_container_width=True)
-
-                dist_fig = go.Figure()
-                for level in RISK_ORDER:
-                    dist_fig.add_trace(
-                        go.Bar(
-                            x=risk_probs.index,
-                            y=risk_probs[level] * 100,
-                            name=level,
-                            marker_color=RISK_COLORS[level],
-                        )
-                    )
-                dist_fig.update_layout(
-                    barmode="stack",
-                    xaxis_title="Date",
-                    yaxis_title="Risk Probability (%)",
-                    yaxis=dict(range=[0, 100]),
-                    margin=dict(l=40, r=20, t=30, b=40),
-                    legend=dict(title=""),
-                    title="Risk-Level Probability Distribution by Day",
-                )
-                st.plotly_chart(dist_fig, use_container_width=True)
-
-                st.dataframe(
-                    prepare_probabilistic_display_table(probability_df),
-                    use_container_width=True,
-                    hide_index=True,
-                )
+            if not selected_prob_models:
+                st.info("Select at least one model in the sidebar to compute probabilistic risk.")
             else:
-                st.error(
-                    "No probabilistic output available because all selected model fetches failed."
-                )
+                ensemble_frames = []
+                failed_models = []
 
-    if run_multi_city_comparison:
-        st.subheader("🌍 4-City Comparison")
-        st.caption(
-            "Comparing Athens, Rome, Stockholm, and London using the same heat pipeline and risk rules."
-        )
+                if "ecmwf_ifs025" in selected_prob_models:
+                    ecmwf_frame = risk_df.copy()
+                    ecmwf_frame["model"] = "ecmwf_ifs025"
+                    ensemble_frames.append(ecmwf_frame)
 
-        with st.spinner("Building multi-city comparison..."):
-            comparison_rows = []
-            for comp_city, (comp_lat, comp_lon) in latlon.items():
-                if comp_city == city:
-                    comp_detected_df = fig_df.copy()
-                    comp_risk_df = risk_df.copy()
-                else:
-                    comp_detected_df, comp_risk_df = run_pipeline_for_city(
-                        comp_city,
-                        comp_lat,
-                        comp_lon
+                additional_models = [
+                    model for model in selected_prob_models if model != "ecmwf_ifs025"
+                ]
+
+                if additional_models:
+                    multi_forecast_df = pd.DataFrame()
+                    with st.spinner("Fetching additional forecast models..."):
+                        try:
+                            multi_forecast_df, failed_models = fetch_multi_model_forecast_compat(
+                                lat=lat,
+                                lon=lon,
+                                city_name=output_label,
+                                models=additional_models,
+                                forecast_days=7,
+                            )
+                        except (RuntimeError, AttributeError) as exc:
+                            failed_models = [
+                                {"model": model, "error": str(exc)} for model in additional_models
+                            ]
+
+                    if not multi_forecast_df.empty:
+                        for model_code, model_forecast in multi_forecast_df.groupby("model"):
+                            model_detected = detect_heatwaves_df_compat(
+                                forecast_df=model_forecast[["date", "tmin", "tmax", "city"]],
+                                clim_path=clim_path,
+                                min_run=3,
+                            )
+                            if (
+                                "is_hot" not in model_detected.columns
+                                and "exceeds_95p" in model_detected.columns
+                            ):
+                                model_detected["is_hot"] = model_detected["exceeds_95p"]
+
+                            model_risk = risk_model.assess_heatwave_risk(
+                                model_detected.copy(),
+                                vulnerability_df.copy(),
+                            )
+                            model_risk = prepare_heat_risk_dataframe(model_risk)
+                            model_risk["model"] = model_code
+                            ensemble_frames.append(model_risk)
+
+                if failed_models:
+                    failed_names = ", ".join(
+                        f"{MODEL_LABEL_BY_CODE.get(item['model'], item['model'])}"
+                        for item in failed_models
                     )
-                    comp_detected_df = comp_detected_df.copy()
-                    comp_detected_df["date"] = pd.to_datetime(comp_detected_df["date"])
-                    comp_risk_df = comp_risk_df.copy()
-                    comp_risk_df["date"] = pd.to_datetime(comp_risk_df["date"])
+                    st.warning(
+                        f"Excluded unavailable models in this run: {failed_names}."
+                    )
 
-                comparison_rows.append(
-                    prepare_city_comparison_row(
-                        comp_city,
-                        comp_lat,
-                        comp_lon,
-                        comp_detected_df,
-                        comp_risk_df,
+                if ensemble_frames:
+                    ensemble_risk_df = pd.concat(ensemble_frames, ignore_index=True)
+                    probability_data = prepare_probabilistic_heat_data(
+                        ensemble_risk_df,
                         RISK_ORDER,
                     )
-                )
+                    probability_df = probability_data.probability_df
+                    risk_probs = probability_data.risk_probabilities
+                    model_codes_used = probability_data.model_codes
+                    model_labels_used = [
+                        f"{MODEL_LABEL_BY_CODE.get(code, code)} ({code})"
+                        for code in model_codes_used
+                    ]
+                    st.caption(f"Models used: {', '.join(model_labels_used)}")
 
-            compare_df = prepare_city_comparison_frame(comparison_rows)
+                    prob_fig = go.Figure()
+                    prob_fig.add_trace(
+                        go.Scatter(
+                            x=probability_df.index,
+                            y=probability_df["p_heatwave"] * 100,
+                            mode="lines+markers",
+                            name="P(Heatwave)",
+                            line=dict(color="#6a4c93", width=2.5),
+                        )
+                    )
+                    prob_fig.add_trace(
+                        go.Scatter(
+                            x=probability_df.index,
+                            y=probability_df["p_high_plus"] * 100,
+                            mode="lines+markers",
+                            name="P(High+)",
+                            line=dict(color="#f46d43", width=2.5),
+                        )
+                    )
+                    prob_fig.add_trace(
+                        go.Scatter(
+                            x=probability_df.index,
+                            y=probability_df["p_extreme"] * 100,
+                            mode="lines+markers",
+                            name="P(Extreme)",
+                            line=dict(color="#d73027", width=2.5),
+                        )
+                    )
+                    prob_fig.update_layout(
+                        xaxis_title="Date",
+                        yaxis_title="Probability (%)",
+                        yaxis=dict(range=[0, 100]),
+                        margin=dict(l=40, r=20, t=30, b=40),
+                        legend=dict(title=""),
+                    )
+                    st.plotly_chart(prob_fig, use_container_width=True)
 
-        map_text = prepare_city_map_hover_text(compare_df)
+                    dist_fig = go.Figure()
+                    for level in RISK_ORDER:
+                        dist_fig.add_trace(
+                            go.Bar(
+                                x=risk_probs.index,
+                                y=risk_probs[level] * 100,
+                                name=level,
+                                marker_color=RISK_COLORS[level],
+                            )
+                        )
+                    dist_fig.update_layout(
+                        barmode="stack",
+                        xaxis_title="Date",
+                        yaxis_title="Risk Probability (%)",
+                        yaxis=dict(range=[0, 100]),
+                        margin=dict(l=40, r=20, t=30, b=40),
+                        legend=dict(title=""),
+                        title="Risk-Level Probability Distribution by Day",
+                    )
+                    st.plotly_chart(dist_fig, use_container_width=True)
 
-        map_fig = go.Figure(
-            go.Scattergeo(
-                lon=compare_df["lon"],
-                lat=compare_df["lat"],
-                mode="markers+text",
-                text=compare_df["city"],
-                textposition="top center",
-                hovertemplate=map_text + "<extra></extra>",
-                marker=dict(
-                    size=12 + (compare_df["heatwave_days"] * 2),
-                    color=compare_df["max_risk_score"],
-                    cmin=0,
-                    cmax=4,
-                    colorscale=[
-                        [0.00, "#a8ddb5"],
-                        [0.25, "#fee08b"],
-                        [0.50, "#fdae61"],
-                        [0.75, "#f46d43"],
-                        [1.00, "#d73027"],
-                    ],
-                    line=dict(color="white", width=1),
-                    colorbar=dict(
-                        title="Max Risk",
-                        tickmode="array",
-                        tickvals=list(range(len(RISK_ORDER))),
-                        ticktext=RISK_ORDER
+                    st.dataframe(
+                        prepare_probabilistic_display_table(probability_df),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+                else:
+                    st.error(
+                        "No probabilistic output available because all selected model fetches failed."
+                    )
+
+    if run_multi_city_comparison:
+        with st.expander("4-city demo comparison", expanded=False):
+            st.caption(
+                "Comparing Athens, Rome, Stockholm, and London using the same heat pipeline and risk rules."
+            )
+
+            with st.spinner("Building multi-city comparison..."):
+                comparison_rows = []
+                for comp_city, (comp_lat, comp_lon) in latlon.items():
+                    if comp_city == city:
+                        comp_detected_df = fig_df.copy()
+                        comp_risk_df = risk_df.copy()
+                    else:
+                        comp_detected_df, comp_risk_df = run_pipeline_for_city(
+                            comp_city,
+                            comp_lat,
+                            comp_lon
+                        )
+                        comp_detected_df = comp_detected_df.copy()
+                        comp_detected_df["date"] = pd.to_datetime(comp_detected_df["date"])
+                        comp_risk_df = comp_risk_df.copy()
+                        comp_risk_df["date"] = pd.to_datetime(comp_risk_df["date"])
+
+                    comparison_rows.append(
+                        prepare_city_comparison_row(
+                            comp_city,
+                            comp_lat,
+                            comp_lon,
+                            comp_detected_df,
+                            comp_risk_df,
+                            RISK_ORDER,
+                        )
+                    )
+
+                compare_df = prepare_city_comparison_frame(comparison_rows)
+
+            map_text = prepare_city_map_hover_text(compare_df)
+
+            map_fig = go.Figure(
+                go.Scattergeo(
+                    lon=compare_df["lon"],
+                    lat=compare_df["lat"],
+                    mode="markers+text",
+                    text=compare_df["city"],
+                    textposition="top center",
+                    hovertemplate=map_text + "<extra></extra>",
+                    marker=dict(
+                        size=12 + (compare_df["heatwave_days"] * 2),
+                        color=compare_df["max_risk_score"],
+                        cmin=0,
+                        cmax=4,
+                        colorscale=[
+                            [0.00, "#a8ddb5"],
+                            [0.25, "#fee08b"],
+                            [0.50, "#fdae61"],
+                            [0.75, "#f46d43"],
+                            [1.00, "#d73027"],
+                        ],
+                        line=dict(color="white", width=1),
+                        colorbar=dict(
+                            title="Max Risk",
+                            tickmode="array",
+                            tickvals=list(range(len(RISK_ORDER))),
+                            ticktext=RISK_ORDER
+                        ),
                     ),
+                )
+            )
+            map_fig.update_layout(
+                margin=dict(l=10, r=10, t=30, b=10),
+                geo=dict(
+                    scope="europe",
+                    projection_type="natural earth",
+                    showland=True,
+                    landcolor="#f7f3e9",
+                    showcountries=True,
+                    countrycolor="#c9c0ad",
+                    lataxis=dict(range=[35, 62]),
+                    lonaxis=dict(range=[-12, 31]),
                 ),
+                title="City Risk Map (Marker Color = Max Risk, Marker Size = Heatwave Days)"
             )
-        )
-        map_fig.update_layout(
-            margin=dict(l=10, r=10, t=30, b=10),
-            geo=dict(
-                scope="europe",
-                projection_type="natural earth",
-                showland=True,
-                landcolor="#f7f3e9",
-                showcountries=True,
-                countrycolor="#c9c0ad",
-                lataxis=dict(range=[35, 62]),
-                lonaxis=dict(range=[-12, 31]),
-            ),
-            title="City Risk Map (Marker Color = Max Risk, Marker Size = Heatwave Days)"
-        )
-        st.plotly_chart(map_fig, use_container_width=True)
+            st.plotly_chart(map_fig, use_container_width=True)
 
-        compare_chart = go.Figure()
-        compare_chart.add_trace(
-            go.Bar(
-                x=compare_df["city"],
-                y=compare_df["peak_tmax"],
-                name="Peak Tmax (°C)",
-                marker_color="#ff6f3c"
+            compare_chart = go.Figure()
+            compare_chart.add_trace(
+                go.Bar(
+                    x=compare_df["city"],
+                    y=compare_df["peak_tmax"],
+                    name="Peak Tmax (°C)",
+                    marker_color="#ff6f3c"
+                )
             )
-        )
-        compare_chart.add_trace(
-            go.Bar(
-                x=compare_df["city"],
-                y=compare_df["peak_tmax_anomaly"],
-                name="Peak Tmax anomaly (°C)",
-                marker_color="#6a4c93"
+            compare_chart.add_trace(
+                go.Bar(
+                    x=compare_df["city"],
+                    y=compare_df["peak_tmax_anomaly"],
+                    name="Peak Tmax anomaly (°C)",
+                    marker_color="#6a4c93"
+                )
             )
-        )
-        compare_chart.update_layout(
-            barmode="group",
-            xaxis_title="City",
-            yaxis_title="Temperature (°C)",
-            margin=dict(l=40, r=20, t=30, b=40),
-            legend=dict(title="")
-        )
-        st.plotly_chart(compare_chart, use_container_width=True)
+            compare_chart.update_layout(
+                barmode="group",
+                xaxis_title="City",
+                yaxis_title="Temperature (°C)",
+                margin=dict(l=40, r=20, t=30, b=40),
+                legend=dict(title="")
+            )
+            st.plotly_chart(compare_chart, use_container_width=True)
 
-        compare_display = prepare_city_comparison_table(compare_df)
-        st.dataframe(compare_display, use_container_width=True, hide_index=True)
+            compare_display = prepare_city_comparison_table(compare_df)
+            st.dataframe(compare_display, use_container_width=True, hide_index=True)
+
+    with st.expander("Run outputs", expanded=False):
+        st.markdown(f"**Heat** · `{heat_result.output_label}`")
+        for line in generated_files_summary(heat_result):
+            st.write(line)
+
+        if precipitation_result is not None:
+            st.markdown("**Precipitation** · experimental/candidate")
+            for line in generated_files_summary(precipitation_result):
+                st.write(line)

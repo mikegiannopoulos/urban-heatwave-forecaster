@@ -19,7 +19,7 @@ HEAT_RISK_TABLE_COLUMNS = [
     "Date",
     "Tmax (°C)",
     "Temperature Class",
-    "Final Heat Class",
+    "Reported Heat Class",
     "",
 ]
 PRECIPITATION_TABLE_COLUMNS = [
