@@ -210,7 +210,7 @@ def test_prepare_heat_risk_table_columns_and_missing_escalation():
 
     assert table.columns.tolist() == HEAT_RISK_TABLE_COLUMNS
     assert table.loc[0, "Date"] == pd.Timestamp("2030-07-01").strftime("%a, %b %d")
-    assert table.loc[0, "Final Heat Class"] == "High"
+    assert table.loc[0, "Reported Heat Class"] == "High"
     assert "Vulnerability Lift" not in table.columns
 
 
