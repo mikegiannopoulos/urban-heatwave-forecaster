@@ -13,6 +13,7 @@ from climate_extremes.app.display_data import (
     PRECIPITATION_TABLE_COLUMNS,
     PROBABILISTIC_DISPLAY_COLUMNS,
     heat_summary_metrics,
+    prepare_heat_assessment_payload,
     prepare_city_comparison_frame,
     prepare_city_comparison_row,
     prepare_city_comparison_table,
@@ -105,6 +106,93 @@ def test_prepare_heat_risk_dataframe_and_metrics():
         "max_tmax": 36.0,
         "max_tmax_anomaly": 3.0,
     }
+
+
+def test_prepare_heat_assessment_payload_uses_adjusted_score_when_available():
+    temperature_df = pd.DataFrame(
+        {
+            "tmax": [34.0, 37.0],
+            "tmax_anomaly": [1.0, 2.5],
+            "heatwave_id": [pd.NA, 1],
+        }
+    )
+    risk_df = prepare_heat_risk_dataframe(
+        pd.DataFrame(
+            {
+                "date": ["2030-07-01", "2030-07-02"],
+                "tmax": [34.0, 37.0],
+                "risk_level": ["Moderate", "Extreme"],
+            }
+        )
+    )
+    metrics = heat_summary_metrics(temperature_df, risk_df)
+
+    payload = prepare_heat_assessment_payload(temperature_df, risk_df, metrics)
+
+    assert payload["event_detected"] is True
+    assert payload["severity_score"] == 100.0
+    assert payload["severity_class"] == "extreme"
+    assert payload["key_metrics"]["peak_tmax_c"] == 37.0
+
+
+def test_prepare_heat_assessment_payload_falls_back_when_adjusted_score_is_all_nan():
+    temperature_df = pd.DataFrame(
+        {
+            "tmax": [31.0, 36.0],
+            "tmax_anomaly": [0.5, 1.5],
+            "heatwave_id": [pd.NA, pd.NA],
+        }
+    )
+    risk_df = prepare_heat_risk_dataframe(
+        pd.DataFrame(
+            {
+                "date": ["2030-07-01", "2030-07-02"],
+                "tmax": [31.0, 36.0],
+            }
+        )
+    )
+    metrics = heat_summary_metrics(temperature_df, risk_df)
+
+    payload = prepare_heat_assessment_payload(temperature_df, risk_df, metrics)
+
+    assert payload["event_detected"] is False
+    assert payload["severity_score"] == 75.0
+    assert payload["severity_class"] == "high"
+
+
+def test_prepare_heat_assessment_payload_handles_global_location_without_adjustment():
+    temperature_df = pd.DataFrame(
+        {
+            "tmax": [29.0, 32.0],
+            "tmax_anomaly": [pd.NA, pd.NA],
+        }
+    )
+    risk_df = pd.DataFrame(
+        {
+            "date": ["2030-07-01", "2030-07-02"],
+            "risk_level": ["none", "moderate"],
+        }
+    )
+    metrics = heat_summary_metrics(temperature_df, risk_df)
+
+    payload = prepare_heat_assessment_payload(temperature_df, risk_df, metrics)
+
+    assert payload["event_detected"] is False
+    assert payload["severity_score"] == 50.0
+    assert payload["severity_class"] == "moderate"
+    assert payload["key_metrics"]["peak_tmax_anomaly_c"] is None
+
+
+def test_prepare_heat_assessment_payload_returns_safe_class_without_scores():
+    temperature_df = pd.DataFrame({"tmax": [pd.NA], "tmax_anomaly": [pd.NA]})
+    risk_df = pd.DataFrame({"risk_level": [pd.NA], "adjusted_risk_score": [pd.NA]})
+    metrics = heat_summary_metrics(temperature_df, risk_df)
+
+    payload = prepare_heat_assessment_payload(temperature_df, risk_df, metrics)
+
+    assert payload["severity_score"] == 0.0
+    assert payload["severity_class"] == "none"
+    assert payload["key_metrics"]["peak_tmax_c"] is None
 
 
 def test_prepare_heat_risk_table_columns_and_missing_escalation():

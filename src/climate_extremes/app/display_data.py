@@ -144,6 +144,31 @@ def heat_summary_metrics(
     }
 
 
+def prepare_heat_assessment_payload(
+    temperature_df: pd.DataFrame,
+    risk_df: pd.DataFrame,
+    heat_metrics: dict[str, Any],
+) -> dict[str, Any]:
+    score, risk_level = _select_heat_summary_risk(risk_df)
+    return {
+        "hazard": "heat",
+        "event_detected": bool(
+            temperature_df["heatwave_id"].notna().any()
+            if "heatwave_id" in temperature_df.columns
+            else False
+        ),
+        "severity_score": float(score * 25),
+        "severity_class": risk_level.lower(),
+        "confidence": "medium",
+        "key_metrics": {
+            "heatwave_days": int(heat_metrics["heatwave_days"]),
+            "peak_tmax_c": _round_optional(heat_metrics["max_tmax"]),
+            "peak_tmax_anomaly_c": _round_optional(heat_metrics["max_tmax_anomaly"]),
+        },
+        "metadata": {"module": "heat"},
+    }
+
+
 def prepare_heat_risk_table(risk_df: pd.DataFrame) -> pd.DataFrame:
     display = risk_df.copy()
     _ensure_columns(
@@ -439,6 +464,91 @@ def _safe_max(frame: pd.DataFrame, column: str) -> float | None:
         return None
     result = float(value)
     return None if math.isnan(result) else result
+
+
+def _select_heat_summary_risk(risk_df: pd.DataFrame) -> tuple[float, str]:
+    if risk_df.empty:
+        return 0.0, "None"
+
+    for score_column, label_column in (
+        ("adjusted_risk_score", "risk_level"),
+        ("base_risk_score", "base_risk_level"),
+    ):
+        selection = _select_risk_from_score_column(risk_df, score_column, label_column)
+        if selection is not None:
+            return selection
+
+    for label_column in ("risk_level", "base_risk_level"):
+        selection = _select_risk_from_label_column(risk_df, label_column)
+        if selection is not None:
+            return selection
+
+    return 0.0, "None"
+
+
+def _select_risk_from_score_column(
+    risk_df: pd.DataFrame,
+    score_column: str,
+    label_column: str,
+) -> tuple[float, str] | None:
+    if score_column not in risk_df.columns:
+        return None
+    scores = pd.to_numeric(risk_df[score_column], errors="coerce")
+    valid_scores = scores.dropna()
+    if valid_scores.empty:
+        return None
+    index = valid_scores.idxmax()
+    score = float(valid_scores.loc[index])
+    label = _label_for_risk_row(risk_df, index, label_column, score)
+    return score, label
+
+
+def _select_risk_from_label_column(
+    risk_df: pd.DataFrame,
+    label_column: str,
+) -> tuple[float, str] | None:
+    if label_column not in risk_df.columns:
+        return None
+    labels = risk_df[label_column].map(_normalize_heat_risk_label)
+    scores = labels.map(RISK_TO_SCORE)
+    valid_scores = scores.dropna()
+    if valid_scores.empty:
+        return None
+    index = valid_scores.idxmax()
+    score = float(valid_scores.loc[index])
+    label = labels.loc[index]
+    return score, label if isinstance(label, str) else "None"
+
+
+def _label_for_risk_row(
+    risk_df: pd.DataFrame,
+    index: object,
+    label_column: str,
+    score: float,
+) -> str:
+    if label_column in risk_df.columns:
+        label = _normalize_heat_risk_label(risk_df.at[index, label_column])
+        if label is not None:
+            return label
+    score_index = int(score)
+    score_index = min(max(score_index, 0), len(RISK_ORDER) - 1)
+    return RISK_ORDER[score_index]
+
+
+def _normalize_heat_risk_label(value: object) -> str | None:
+    if pd.isna(value):
+        return None
+    normalized = str(value).strip().lower()
+    for label in RISK_ORDER:
+        if normalized == label.lower():
+            return label
+    return None
+
+
+def _round_optional(value: object) -> float | None:
+    if value is None or pd.isna(value):
+        return None
+    return round(float(value), 1)
 
 
 def _empty_probability_frame() -> pd.DataFrame:

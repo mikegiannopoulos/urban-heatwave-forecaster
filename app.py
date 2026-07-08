@@ -17,6 +17,7 @@ from climate_extremes.app.display_data import (
     format_hazard_status,
     format_heat_signal_message,
     heat_summary_metrics,
+    prepare_heat_assessment_payload,
     prepare_city_comparison_frame,
     prepare_city_comparison_row,
     prepare_city_comparison_table,
@@ -465,21 +466,11 @@ if st.button("Generate Climate Extremes Forecast", type="primary"):
     heatwave_days = heat_metrics["heatwave_days"]
     extreme_days = heat_metrics["extreme_days"]
 
-    heat_assessment_payload = {
-        "hazard": "heat",
-        "event_detected": bool(detected_df["heatwave_id"].notna().any()),
-        "severity_score": float(risk_df["adjusted_risk_score"].max() * 25),
-        "severity_class": risk_df.loc[
-            risk_df["adjusted_risk_score"].idxmax(), "risk_level"
-        ].lower() if not risk_df.empty else "none",
-        "confidence": "medium",
-        "key_metrics": {
-            "heatwave_days": int(heatwave_days),
-            "peak_tmax_c": round(float(detected_df["tmax"].max()), 1),
-            "peak_tmax_anomaly_c": round(float(fig_df["tmax_anomaly"].max()), 1),
-        },
-        "metadata": {"module": "heat"},
-    }
+    heat_assessment_payload = prepare_heat_assessment_payload(
+        fig_df,
+        risk_df,
+        heat_metrics,
+    )
     assessments = [heat_assessment_payload]
     if precipitation_assessment is not None:
         assessments.append(precipitation_assessment)
