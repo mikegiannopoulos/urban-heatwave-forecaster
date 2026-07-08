@@ -31,6 +31,11 @@ from climate_extremes.app.display_data import (
     prepare_temperature_display_frame,
 )
 from climate_extremes.app.location_selection import (
+    ADVANCED_DEMO_SECTION_LABEL,
+    COORDINATES_MODE,
+    DEFAULT_LOCATION_MODE,
+    GLOBAL_SEARCH_MODE,
+    MAIN_LOCATION_MODES,
     filter_locations_by_country_code,
     format_candidate_label,
     format_location_details,
@@ -265,19 +270,19 @@ with st.expander("📦 How the Data Flows"):
 
 # --- Sidebar: Location selection ---
 st.sidebar.header("Location")
+location_modes = list(MAIN_LOCATION_MODES)
 location_mode = st.sidebar.radio(
     "Location source",
-    ["Demo preset", "Global search", "Coordinates"],
+    location_modes,
+    index=location_modes.index(DEFAULT_LOCATION_MODE),
     horizontal=False,
 )
 
 selected_location: Location | None = None
-is_demo_location = location_mode == "Demo preset"
+is_demo_location = False
+run_multi_city_comparison = False
 
-if location_mode == "Demo preset":
-    city = st.sidebar.selectbox("Select a demo city", DEMO_CITY_NAMES)
-    selected_location = get_city_location(city)
-elif location_mode == "Global search":
+if location_mode == GLOBAL_SEARCH_MODE:
     search_query = st.sidebar.text_input("City or place name", placeholder="Gothenburg")
     search_country_code = st.sidebar.text_input(
         "Country code filter",
@@ -311,7 +316,7 @@ elif location_mode == "Global search":
                 selected_location = location_candidates[labels.index(selected_label)]
             else:
                 st.sidebar.info("Choose one candidate before running a forecast.")
-elif location_mode == "Coordinates":
+elif location_mode == COORDINATES_MODE:
     custom_name = st.sidebar.text_input("Location name", value="Custom location")
     custom_lat = st.sidebar.number_input(
         "Latitude",
@@ -347,9 +352,27 @@ elif location_mode == "Coordinates":
     except ValueError as exc:
         st.sidebar.error(str(exc))
 
+with st.sidebar.expander(ADVANCED_DEMO_SECTION_LABEL):
+    use_demo_location = st.checkbox(
+        "Use built-in demo city",
+        value=False,
+        help="Overrides the selected location for compatibility and regression checks.",
+    )
+    if use_demo_location:
+        demo_city = st.selectbox("Demo city", DEMO_CITY_NAMES)
+        selected_location = get_city_location(demo_city)
+        is_demo_location = True
+        run_multi_city_comparison = st.checkbox(
+            "Run 4-city demo comparison",
+            value=False,
+            help="Runs additional forecast calls for Athens, Rome, Stockholm, and London.",
+        )
+    else:
+        st.caption("Demo tools are kept for compatibility checks, not the main workflow.")
+
 if selected_location is None:
     st.title("Climate Extremes Assessment")
-    st.info("Select a demo city, geocoded location, or coordinates in the sidebar.")
+    st.info("Search for a global city/place or enter coordinates in the sidebar.")
     st.stop()
 
 city = selected_location.name
@@ -359,26 +382,18 @@ lon = selected_location.longitude
 st.sidebar.caption(f"Using: {format_location_label(selected_location)}")
 st.sidebar.caption(format_location_details(selected_location))
 
-run_multi_city_comparison = st.sidebar.checkbox(
-    "Enable 4-city comparison",
-    value=False,
-    disabled=not is_demo_location,
-    help="Runs additional forecast calls for the four demo cities.",
-)
-if not is_demo_location:
-    st.sidebar.caption("4-city comparison is available for demo presets only.")
 run_probabilistic_risk = st.sidebar.checkbox(
-    "Enable probabilistic multi-model risk",
+    "Show multi-model uncertainty",
     value=True,
-    help="Combines multiple weather models and shows risk probabilities."
+    help="Combines multiple weather models and shows heat-risk probabilities."
 )
 include_precipitation_module = st.sidebar.checkbox(
-    "Include heavy precipitation module",
+    "Include experimental precipitation module",
     value=True,
     help="Runs the experimental/candidate 3-day wet-spell precipitation module alongside heat.",
 )
 prob_model_labels = st.sidebar.multiselect(
-    "Models for probabilistic risk",
+    "Weather models for uncertainty view",
     options=list(MODEL_OPTIONS.keys()),
     default=list(MODEL_OPTIONS.keys()),
     disabled=not run_probabilistic_risk,

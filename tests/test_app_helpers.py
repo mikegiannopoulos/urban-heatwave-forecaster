@@ -6,6 +6,11 @@ import pandas as pd
 import pytest
 
 from climate_extremes.app.location_selection import (
+    ADVANCED_DEMO_SECTION_LABEL,
+    COORDINATES_MODE,
+    DEFAULT_LOCATION_MODE,
+    GLOBAL_SEARCH_MODE,
+    MAIN_LOCATION_MODES,
     filter_locations_by_country_code,
     format_candidate_label,
     format_location_details,
@@ -22,6 +27,13 @@ from climate_extremes.app.result_loading import (
 )
 from climate_extremes.core.locations import Location
 from climate_extremes.core.results import HazardWorkflowResult
+
+
+def test_main_location_workflow_defaults_to_global_search_without_demo_mode():
+    assert DEFAULT_LOCATION_MODE == GLOBAL_SEARCH_MODE
+    assert MAIN_LOCATION_MODES == (GLOBAL_SEARCH_MODE, COORDINATES_MODE)
+    assert "Demo preset" not in MAIN_LOCATION_MODES
+    assert ADVANCED_DEMO_SECTION_LABEL == "Advanced demo tools"
 
 
 def test_location_label_formatting_includes_admin_country_and_coordinates():

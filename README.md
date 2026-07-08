@@ -34,7 +34,7 @@ urban-heatwave-forecaster/
 │   │   │   └── precipitation/      # Candidate precipitation definitions, baselines, detection, comparison
 │   │   └── cli.py                  # New platform CLI
 │   └── urban_heatwave_forecaster/  # Legacy compatibility layer
-├── app.py                          # Streamlit heat module app
+├── app.py                          # Streamlit climate hazard assessment app
 ├── tests/                          # Unit tests for shared utilities and heat module
 ├── requirements.txt
 ├── pyproject.toml
@@ -90,7 +90,7 @@ python -m climate_extremes.cli heat assess --city Athens
 python -m climate_extremes.cli heat summarize --city Athens
 ```
 
-Location search is available as backend groundwork for future global-city workflows:
+Global location search is available for user-selected climate hazard runs:
 
 ```bash
 python -m climate_extremes.cli search-location "Gothenburg"
@@ -119,11 +119,15 @@ This compares the current candidate definitions:
 - `daily-burst-99p`
 - `wet-spell-3day-95p`
 
-### 6. Launch the current heat-focused dashboard
+### 6. Launch the climate hazard dashboard
 
 ```bash
 streamlit run app.py
 ```
+
+The Streamlit app defaults to global city/place search, with coordinates available as
+a manual scientific fallback. Built-in demo-city controls remain available only in an
+advanced demo section for compatibility checks.
 
 ## Multi-Hazard Combination Strategy
 

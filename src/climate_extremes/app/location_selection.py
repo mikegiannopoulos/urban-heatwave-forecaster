@@ -2,6 +2,12 @@ from __future__ import annotations
 
 from climate_extremes.core.locations import Location
 
+GLOBAL_SEARCH_MODE = "Global search"
+COORDINATES_MODE = "Coordinates"
+DEFAULT_LOCATION_MODE = GLOBAL_SEARCH_MODE
+MAIN_LOCATION_MODES = (GLOBAL_SEARCH_MODE, COORDINATES_MODE)
+ADVANCED_DEMO_SECTION_LABEL = "Advanced demo tools"
+
 
 def format_location_label(location: Location) -> str:
     parts = [location.name]
