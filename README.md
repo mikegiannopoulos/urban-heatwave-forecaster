@@ -2,7 +2,7 @@
 
 Climate Hazards Forecaster is a modular app for forecasting and assessing climate hazards from short-term weather forecasts and climatological baselines.
 
-**Links:** [Streamlit app](https://climate-hazards-forecaster.streamlit.app/) · [GitHub repository](https://github.com/mikegiannopoulos/climate-hazards-forecaster)
+[Streamlit app](https://climate-hazards-forecaster.streamlit.app/)
 
 Today, the fully implemented module is **heat**. The new package structure, shared contracts, and summary layer are in place so that **heavy precipitation extremes** and later **drought** can be added without bending the codebase back around heat-only assumptions.
 
