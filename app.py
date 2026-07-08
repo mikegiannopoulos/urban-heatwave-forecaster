@@ -185,7 +185,7 @@ LOGO_PATH = ROOT / "assets" / "urban-heatwave-forecaster_new.png"
 logo_img = Image.open(LOGO_PATH)
 
 # Page config (icon shows in browser/tab and Streamlit menu)
-st.set_page_config(page_title="Urban Heatwave Forecaster",
+st.set_page_config(page_title="Climate Hazards Forecaster",
                    page_icon=logo_img, layout="wide")
 
 left, right = st.columns([0.1, 0.9], vertical_alignment="center")  # adjust ratio as needed
@@ -193,7 +193,7 @@ with left:
     st.image(logo_img, width=150)
 with right:
     # We'll set the title dynamically later when city is chosen
-    st.markdown("<h2 style='margin:0;'>Urban Heatwave Forecaster</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='margin:0;'>Climate Hazards Forecaster</h2>", unsafe_allow_html=True)
 
 
 st.markdown("""
@@ -219,7 +219,7 @@ st.markdown("""
 with st.expander("🔍 How This Works"):
     st.markdown("""
     **Overview**  
-    This tool forecasts climate extremes by combining short-term weather forecasts with long-term climate norms. The current app supports a full **heat** workflow and an experimental/candidate **heavy precipitation** module.
+    Climate Hazards Forecaster combines short-term weather forecasts with long-term climate norms. The current app supports a full **heat** workflow and an experimental/candidate **heavy precipitation** module.
 
     **Heatwave Detection**  
     According to the European State of the Climate (ESOTC), a [heatwave](https://climate.copernicus.eu/heatwaves-brief-introduction) happens when for at least three days in a row, both the daytime highs and nighttime lows are hotter than what’s normal for that time of year. Specifically, hotter than 95% of past temperatures recorded between 1991 and 2020.
@@ -265,7 +265,7 @@ with st.expander("📦 How the Data Flows"):
    Assigns hazard-specific severity and harmonizes outputs into a shared multi-hazard summary.
 
 6. **📈 Final Output**
-   Heat details, precipitation details, and a combined climate-extremes summary reflect all the above in real time.
+   Heat details, precipitation details, and a combined climate-hazard summary reflect all the above in real time.
         """)
 
 # --- Sidebar: Location selection ---
@@ -371,7 +371,7 @@ with st.sidebar.expander(ADVANCED_DEMO_SECTION_LABEL):
         st.caption("Demo tools are kept for compatibility checks, not the main workflow.")
 
 if selected_location is None:
-    st.title("Climate Extremes Assessment")
+    st.title("Climate Hazards Forecaster")
     st.info("Search for a global city/place or enter coordinates in the sidebar.")
     st.stop()
 
@@ -409,12 +409,12 @@ latlon = {
 }
 
 # --- Button to Generate Forecast ---
-st.title(f"Climate Extremes Assessment – {format_location_label(selected_location)}")
+st.title(f"Climate Hazards Forecaster – {format_location_label(selected_location)}")
 st.caption(
     f"Selected location: {format_location_details(selected_location)}"
 )
 
-if st.button("Generate Climate Extremes Forecast", type="primary"):
+if st.button("Generate Climate Hazard Forecast", type="primary"):
         
     # Create a placeholder for the gear
     gear_placeholder = st.empty()

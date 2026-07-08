@@ -1,8 +1,8 @@
 # Agent Development Workflow
 
 This repository is in a transition from the original urban heatwave forecaster
-to a modular climate-extremes platform. Agent work should keep that transition
-controlled, reviewable, and easy to reverse.
+to Climate Hazards Forecaster, a modular climate-hazard forecasting app. Agent
+work should keep that transition controlled, reviewable, and easy to reverse.
 
 ## Core Rules
 

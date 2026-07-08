@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "urban-heatwave-forecaster"
+name = "climate-hazards-forecaster"
 version = "0.2.0"
-description = "Modular climate-extremes platform with an urban heatwave module"
+description = "Climate Hazards Forecaster app with heat and candidate precipitation workflows"
 authors = [{name = "Michael Giannopoulos"}]
 readme = "README.md"
 license = {text = "AGPL-3.0-only"}

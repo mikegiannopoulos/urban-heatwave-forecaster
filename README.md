@@ -1,15 +1,15 @@
-# <img src="assets/urban-heatwave-forecaster_new.png" alt="Urban Heatwave Forecaster Logo" width="80"> Climate Extremes Platform
+# <img src="assets/urban-heatwave-forecaster_new.png" alt="Climate Hazards Forecaster Logo" width="80"> Climate Hazards Forecaster
 
-This repository is evolving from a single-purpose urban heatwave pipeline into a **modular platform for detecting and assessing climate extremes**.
+Climate Hazards Forecaster is a modular app for forecasting and assessing climate hazards from short-term weather forecasts and climatological baselines.
 
 Today, the fully implemented module is **heat**. The new package structure, shared contracts, and summary layer are in place so that **heavy precipitation extremes** and later **drought** can be added without bending the codebase back around heat-only assumptions.
 
-The existing Streamlit app and the `urban_heatwave_forecaster` package are still supported as a compatibility layer while the broader platform architecture takes shape.
+The `climate_extremes` package is the current scientific/platform namespace. The `urban_heatwave_forecaster` package remains as a compatibility layer while the broader hazard architecture takes shape.
 
 ## Current Status
 
 - `heat` is the working module end to end: forecast fetch, climatology baseline, heatwave detection, risk assessment, and UI.
-- `climate_extremes` is the new platform package with shared schemas, utilities, and CLI entry points.
+- `climate_extremes` is the platform package with shared schemas, utilities, and CLI entry points.
 - `urban_heatwave_forecaster` remains available so existing imports and commands do not break mid-refactor.
 - `precipitation` now has a first testing implementation with candidate definitions that can be compared side by side.
 
@@ -23,7 +23,7 @@ The existing Streamlit app and the `urban_heatwave_forecaster` package are still
 ## Project Structure
 
 ```text
-urban-heatwave-forecaster/
+climate-hazards-forecaster/
 ├── src/
 │   ├── climate_extremes/
 │   │   ├── baselines/              # Generic climatology builders

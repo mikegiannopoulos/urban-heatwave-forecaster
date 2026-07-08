@@ -13,7 +13,7 @@ from climate_extremes.io.openmeteo import fetch_ecmwf_forecast
 from climate_extremes.modules.heat.detection import detect_heatwaves
 from climate_extremes.modules.heat.risk import assess_heatwave_risk
 
-app = typer.Typer(help="Urban Heatwave Forecaster CLI (legacy entry point)")
+app = typer.Typer(help="Climate Hazards Forecaster legacy compatibility CLI")
 
 
 def _normalize_city(city: str) -> str:
